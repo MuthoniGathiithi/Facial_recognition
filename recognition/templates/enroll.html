@@ -42,9 +42,16 @@
       <input type="file" name="file2" accept="image/*" />
 
       <div style="margin-top:14px">
-        <label style="display:block; margin-top:8px; font-size:13px;"><input type="checkbox" name="append" id="append"> Append to existing enrollment (if present)</label>
+        <p class="small">Captured photo preview:</p>
+        <img id="preview" src="" alt="Captured preview" style="width:160px; height:120px; border:1px solid #ddd; display:block; margin-bottom:8px; object-fit:cover" />
         <button type="submit">Enroll</button>
       </div>
+    </form>
+
+    <!-- Delete all enrollments (POST) -->
+    <form method="post" action="{% url 'delete_all_enrollments' %}" onsubmit="return confirm('Are you sure you want to DELETE all enrolled people? This cannot be undone.')" style="margin-top:12px">
+      {% csrf_token %}
+      <button type="submit" style="background:#e74c3c">Delete all enrolled people</button>
     </form>
   </div>
 

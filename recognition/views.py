@@ -32,12 +32,13 @@ def enroll(request):
                         dst.write(chunk)
                 upload_paths.append(temp_path)
 
-        append_flag = bool(request.POST.get('append'))
+        # Do not allow appending to existing enrollments; always treat enrollment as create-only
         if not name or (not camera_b64 and not upload_paths):
             message = "Name and at least one photo are required"
         else:
             try:
-                saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths, append=append_flag)
+                # Force append=False to prevent accidental appends
+                saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths, append=False)
                 message = f"Face enrolled successfully! ({len(saved_faces)} face(s) saved)"
             except Exception as e:
                 # Write a debug file with the exception and inputs so we can inspect server-side
@@ -122,4 +123,35 @@ def matching_view(request):
             pass
     
     return render(request, 'matching.html', {'result': result, 'known_count': known_count, 'unknown_count': unknown_count, 'recognized_names': recognized_names, 'show_summary': show_summary})
+
+
+def delete_all_enrollments(request):
+    """Delete all enrolled people (remove folders under MEDIA_ROOT/faces).
+
+    This view only accepts POST to avoid accidental deletions via GET.
+    """
+    from django.http import HttpResponseRedirect
+    from django.urls import reverse
+    import shutil
+    from django.conf import settings
+
+    message = ''
+    if request.method != 'POST':
+        message = 'Invalid request method. Use POST to delete enrollments.'
+        return render(request, 'enroll.html', {'message': message})
+
+    faces_root = os.path.join(settings.MEDIA_ROOT, 'faces')
+    deleted = 0
+    try:
+        if os.path.exists(faces_root):
+            for name in os.listdir(faces_root):
+                path = os.path.join(faces_root, name)
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                    deleted += 1
+        message = f'Deleted {deleted} enrolled person(s)'.strip()
+    except Exception as e:
+        message = f'Failed to delete enrollments: {e}'
+
+    return render(request, 'enroll.html', {'message': message})
 
