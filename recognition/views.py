@@ -32,11 +32,12 @@ def enroll(request):
                         dst.write(chunk)
                 upload_paths.append(temp_path)
 
+        append_flag = bool(request.POST.get('append'))
         if not name or (not camera_b64 and not upload_paths):
             message = "Name and at least one photo are required"
         else:
             try:
-                saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths)
+                saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths, append=append_flag)
                 message = f"Face enrolled successfully! ({len(saved_faces)} face(s) saved)"
             except Exception as e:
                 # Write a debug file with the exception and inputs so we can inspect server-side

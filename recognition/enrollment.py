@@ -10,7 +10,7 @@ from .facial_extraction import extract_features_from_entire_list
 from .matching import load_enrolled_embeddings
 import json
 
-def enroll_face(name, camera_base64=None, upload_files=None):
+def enroll_face(name, camera_base64=None, upload_files=None, append=False):
     """Enroll up to three images for a person.
 
     - name: person name
@@ -104,7 +104,7 @@ def enroll_face(name, camera_base64=None, upload_files=None):
     if not new_features:
         raise ValueError('Failed to extract features from normalized faces')
 
-    # Check for duplicates
+    # Check for duplicates (only error if matched to another existing person)
     enrolled = load_enrolled_embeddings()
     for nf in new_features:
         nf_arr = np.asarray(nf).ravel()
@@ -113,15 +113,24 @@ def enroll_face(name, camera_base64=None, upload_files=None):
                 emb_arr = np.asarray(emb).ravel()
                 sim = np.dot(emb_arr, nf_arr) / (np.linalg.norm(emb_arr) * np.linalg.norm(nf_arr))
                 if sim >= 0.95:
-                    raise ValueError(f"Face already enrolled as '{person}' (similarity: {sim:.2%})")
+                    # If appending to the same name, allow it; otherwise block
+                    if person != name:
+                        raise ValueError(f"Face already enrolled as '{person}' (similarity: {sim:.2%})")
+                    else:
+                        # matching self; if append is False, this may indicate duplicate upload
+                        if not append:
+                            raise ValueError(f"Face already enrolled as '{person}' (similarity: {sim:.2%})")
 
     # Save normalized faces and embeddings
     faces_dir = os.path.join(settings.MEDIA_ROOT, 'faces')
     os.makedirs(faces_dir, exist_ok=True)
     save_dir = os.path.join(faces_dir, name)
-    if os.path.exists(save_dir):
-        raise ValueError(f"User '{name}' is already enrolled")
-    os.makedirs(save_dir, exist_ok=True)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        # existing directory: if not append, treat as error to avoid accidental overwrite
+        if not append:
+            raise ValueError(f"User '{name}' is already enrolled")
 
     saved_paths = []
     for i, face in enumerate(normalized_faces_all, start=1):
