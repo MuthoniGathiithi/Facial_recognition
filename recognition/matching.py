@@ -97,15 +97,32 @@ def load_enrolled_embeddings():
         embeddings_list = []
         
         try:
-            image_files = [f for f in os.listdir(person_dir) 
-                          if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-            print(f"   🖼️ Image files: {image_files}")
+            # Prefer loading persisted embeddings if present for speed
+            emb_path = os.path.join(person_dir, 'embeddings.npy')
+            if os.path.exists(emb_path):
+                try:
+                    arr = np.load(emb_path)
+                    # ensure 2D array
+                    if arr.ndim == 1:
+                        arr = arr.reshape(1, -1)
+                    for row in arr:
+                        embeddings_list.append(np.asarray(row).ravel())
+                    print(f"   🧾 Loaded persisted embeddings: {emb_path} ({len(embeddings_list)} items)")
+                except Exception as e:
+                    print(f"   ⚠️ Failed to load embeddings.npy ({e}), falling back to images")
+            # Fallback to reading image files if embeddings not loaded
+            if not embeddings_list:
+                image_files = [f for f in os.listdir(person_dir) 
+                              if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                print(f"   🖼️ Image files: {image_files}")
         except Exception as e:
             print(f"   ❌ Error: {e}")
             continue
-        
-        for img_file in image_files:
-            img_path = os.path.join(person_dir, img_file)
+
+        # Only run image-based extraction if we didn't already load embeddings.npy
+        if not embeddings_list:
+            for img_file in image_files:
+                img_path = os.path.join(person_dir, img_file)
             print(f"   📷 Processing: {img_file}")
             # Try fast path: images saved during enrollment are already
             # normalized cropped face images. Read them directly and

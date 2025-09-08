@@ -8,30 +8,50 @@ from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import uuid
 
-# Landing Page
+
 def landing_view(request):
     return render(request, 'landing_page.html')
 
-# Enroll View
 def enroll(request):
     message = ""
     if request.method == 'POST':
         name = request.POST.get('name')
-        photo_data = request.POST.get('captured_photo')
-        
-        if not name or not photo_data:
-            message = "Name and photo are required"
+        camera_b64 = request.POST.get('captured_photo')
+        # Accept up to 2 uploaded files
+        upload_paths = []
+        if request.FILES:
+            # Save up to 2 files to temp_uploads and pass their paths
+            for i, key in enumerate(request.FILES):
+                if i >= 2:
+                    break
+                fobj = request.FILES[key]
+                temp_path = os.path.join(settings.BASE_DIR, 'temp_uploads', f"enroll_{uuid.uuid4().hex}_{fobj.name}")
+                os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+                with open(temp_path, 'wb+') as dst:
+                    for chunk in fobj.chunks():
+                        dst.write(chunk)
+                upload_paths.append(temp_path)
+
+        if not name or (not camera_b64 and not upload_paths):
+            message = "Name and at least one photo are required"
         else:
             try:
-                # Pass the base64 string directly to enroll_face
-                saved_faces = enroll_face(name, photo_data)
+                saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths)
                 message = f"Face enrolled successfully! ({len(saved_faces)} face(s) saved)"
             except Exception as e:
                 message = f"Enrollment failed: {str(e)}"
+            finally:
+                # Clean up temp upload files (enroll_face kept only media copies)
+                for p in upload_paths:
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except Exception:
+                        pass
     
     return render(request, 'enroll.html', {'message': message})
 
-# Matching View
+
 def matching_view(request):
     result = ""
     known_count = 0
