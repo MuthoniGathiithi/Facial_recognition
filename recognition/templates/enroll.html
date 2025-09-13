@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Enroll Face</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f7f7f7; color: #222; }
+    .container { max-width: 640px; margin: 40px auto; background: #fff; padding: 20px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);} 
+    label { display:block; margin-top:12px; font-size:14px; }
+    input[type=text], input[type=file] { width:100%; padding:8px; font-size:14px; }
+    button { margin-top:12px; padding:10px 14px; font-size:14px; background:#2b7cff; color:#fff; border:none; border-radius:4px; cursor:pointer }
+    .small { font-size:12px; color:#666 }
+    .row { display:flex; gap:8px; align-items:center }
+    #video { border:1px solid #ddd; width:320px; height:240px; background:#000 }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Enroll Face</h2>
+    {% if message %}
+      <p><strong>{{ message }}</strong></p>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required />
+
+      <label class="small">1) Capture with webcam</label>
+      <div class="row">
+        <video id="video" autoplay playsinline></video>
+        <div>
+          <button type="button" id="startBtn">Start Camera</button>
+          <button type="button" id="snapBtn">Take Photo</button>
+        </div>
+      </div>
+      <input type="hidden" name="captured_photo" id="captured_photo" />
+
+      <label class="small">2) Upload image (browse)</label>
+      <input type="file" name="file1" accept="image/*" />
+
+      <label class="small">3) Upload image (optional)</label>
+      <input type="file" name="file2" accept="image/*" />
+
+      <div style="margin-top:14px">
+        <button type="submit">Enroll</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+    const snapBtn = document.getElementById('snapBtn');
+    const captured = document.getElementById('captured_photo');
+    let stream = null;
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+      } catch (e) {
+        alert('Could not access camera: ' + e.message);
+      }
+    });
+
+    snapBtn.addEventListener('click', () => {
+      if (!stream) { alert('Start the camera first'); return }
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const data = canvas.toDataURL('image/png');
+      captured.value = data;
+      alert('Photo captured. You can now submit the form.');
+    });
+  </script>
+</body>
+</html>
