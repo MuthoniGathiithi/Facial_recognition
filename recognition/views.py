@@ -39,6 +39,21 @@ def enroll(request):
                 saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths)
                 message = f"Face enrolled successfully! ({len(saved_faces)} face(s) saved)"
             except Exception as e:
+                # Write a debug file with the exception and inputs so we can inspect server-side
+                try:
+                    debug_path = os.path.join(settings.BASE_DIR, 'temp_uploads', 'last_enroll_debug.json')
+                    import json
+                    debug_info = {
+                        'error': str(e),
+                        'name': name,
+                        'camera_provided': bool(camera_b64),
+                        'upload_count': len(upload_paths),
+                        'upload_paths': upload_paths,
+                    }
+                    with open(debug_path, 'w') as df:
+                        json.dump(debug_info, df)
+                except Exception:
+                    pass
                 message = f"Enrollment failed: {str(e)}"
             finally:
                 # Clean up temp upload files (enroll_face kept only media copies)
