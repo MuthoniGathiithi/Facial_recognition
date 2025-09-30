@@ -228,6 +228,26 @@ def match_face(uploaded_photo_base64, threshold=0.55):
             return "No face detected in uploaded image"
         
         print(f"✅ Found {len(uploaded_embeddings)} face(s)")
+
+        # Save normalized crops to temp_uploads for debugging inspection
+        try:
+            temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
+            os.makedirs(temp_dir, exist_ok=True)
+            # We need to regenerate normalized faces from the image so we save the
+            # actual cropped/normalized images used for embedding extraction.
+            # Use the detection + normalization pipeline to get the face crops.
+            faces = multi_scale_detect(image_rgb)
+            if faces:
+                face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
+                normalized_faces = normalize_entire_list(face_list, landmarks_list)
+                for idx, face in enumerate(normalized_faces, start=1):
+                    save_path = os.path.join(temp_dir, f"debug_match_face_{idx}.png")
+                    # face is RGB, convert to BGR for cv2
+                    face_bgr = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(save_path, face_bgr)
+                    print(f"💾 Saved normalized crop: {save_path}")
+        except Exception as e:
+            print(f"⚠️ Could not save debug crops: {e}")
         
         # Load enrolled faces
         print("📂 Loading enrolled faces...")
