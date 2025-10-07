@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Enrollment</title>
+</head>
+<body>
+    <h1> Enroll A face </h1>
+
+
+{% if message %}
+    <p style="color: green;">{{ message }}</p>
+{% endif %}
+
+
+
+    <form   form method="POST" action="{% url 'enroll' %}">
+        {% csrf_token %}>
+        <label for ="name">Enter Your Full Name</label>
+        <input type="text" id="name" name="name" required>
+
+
+        <video id="video" width="640" height="480" autoplay></video>
+        <button type="button" id="capture">Capture Photo</button>
+
+
+        <input type="hidden" id="photo" name="photo">
+        <img id="photo-preview" alt="Captured Photo" width="320" height="240">
+        <button type="submit">Submit</button>
+
+
+    </form>>
+
+    <script>
+    const video = document.getElementById('video');
+    const captureButton = document.getElementById('capture');
+    const photoInput = document.getElementById('photo');
+    const photoPreview = document.getElementById('photo-preview');
+
+    navigator.mediaDevices.getUserMedia({ video:true})
+    .then (stream=> {
+        video.srcObject = stream;
+    })
+    
+    .catch(error => {
+        console.error('Error accessing webcam:', error);
+    });
+
+
+    captureButton.addEventListener('click', () => {
+
+        captureButton.addEventListener('click', () => {
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;   // Set canvas width to match video
+    canvas.height = video.videoHeight; // Set canvas height to match video
+
+    
+    const context = canvas.getContext('2d');  // Get 2D drawing context
+    context.drawImage(video, 0, 0, canvas.width, canvas.height); // Draw video frame
+
+    
+    const imageData = canvas.toDataURL('image/png'); // PNG format
+
+
+    photoInput.value = imageData;
+
+  
+    photoPreview.src = imageData;
+  });
+        
+    });
+    
+    
+    
+    </script>
+</body>    
