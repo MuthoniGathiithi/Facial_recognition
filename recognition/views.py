@@ -1,4 +1,5 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.contrib import messages
 from .enrollment import enroll_face
 from .matching import match_face
 import os
@@ -13,7 +14,7 @@ def landing_view(request):
     return render(request, 'landing_page.html')
 
 def enroll(request):
-    message = ""
+    # Use Django messages to communicate success/errors to the user
     if request.method == 'POST':
         name = request.POST.get('name')
         camera_b64 = request.POST.get('captured_photo')
@@ -34,12 +35,14 @@ def enroll(request):
 
         # Do not allow appending to existing enrollments; always treat enrollment as create-only
         if not name or (not camera_b64 and not upload_paths):
-            message = "Name and at least one photo are required"
+            messages.error(request, "Name and at least one photo are required")
         else:
             try:
                 # Force append=False to prevent accidental appends
                 saved_faces = enroll_face(name, camera_base64=camera_b64, upload_files=upload_paths, append=False)
-                message = f"Face enrolled successfully! ({len(saved_faces)} face(s) saved)"
+                messages.success(request, f"Face enrolled successfully! ({len(saved_faces)} face(s) saved)")
+                # Redirect to GET after POST to avoid duplicate form submissions
+                return redirect('enroll')
             except Exception as e:
                 # Write a debug file with the exception and inputs so we can inspect server-side
                 try:
@@ -56,7 +59,7 @@ def enroll(request):
                         json.dump(debug_info, df)
                 except Exception:
                     pass
-                message = f"Enrollment failed: {str(e)}"
+                messages.error(request, f"Enrollment failed: {str(e)}")
             finally:
                 # Clean up temp upload files (enroll_face kept only media copies)
                 for p in upload_paths:
@@ -65,8 +68,8 @@ def enroll(request):
                             os.remove(p)
                     except Exception:
                         pass
-    
-    return render(request, 'enroll.html', {'message': message})
+
+    return render(request, 'enroll.html')
 
 
 def matching_view(request):
@@ -125,33 +128,5 @@ def matching_view(request):
     return render(request, 'matching.html', {'result': result, 'known_count': known_count, 'unknown_count': unknown_count, 'recognized_names': recognized_names, 'show_summary': show_summary})
 
 
-def delete_all_enrollments(request):
-    """Delete all enrolled people (remove folders under MEDIA_ROOT/faces).
-
-    This view only accepts POST to avoid accidental deletions via GET.
-    """
-    from django.http import HttpResponseRedirect
-    from django.urls import reverse
-    import shutil
-    from django.conf import settings
-
-    message = ''
-    if request.method != 'POST':
-        message = 'Invalid request method. Use POST to delete enrollments.'
-        return render(request, 'enroll.html', {'message': message})
-
-    faces_root = os.path.join(settings.MEDIA_ROOT, 'faces')
-    deleted = 0
-    try:
-        if os.path.exists(faces_root):
-            for name in os.listdir(faces_root):
-                path = os.path.join(faces_root, name)
-                if os.path.isdir(path):
-                    shutil.rmtree(path)
-                    deleted += 1
-        message = f'Deleted {deleted} enrolled person(s)'.strip()
-    except Exception as e:
-        message = f'Failed to delete enrollments: {e}'
-
-    return render(request, 'enroll.html', {'message': message})
+# delete_all_enrollments view removed per user request
 

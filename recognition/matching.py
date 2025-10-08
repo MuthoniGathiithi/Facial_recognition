@@ -123,53 +123,53 @@ def load_enrolled_embeddings():
         if not embeddings_list:
             for img_file in image_files:
                 img_path = os.path.join(person_dir, img_file)
-            print(f"   📷 Processing: {img_file}")
-            # Try fast path: images saved during enrollment are already
-            # normalized cropped face images. Read them directly and
-            # extract embedding without re-running detection which can
-            # fail on small/cropped images.
-            try:
-                # Read with OpenCV (BGR)
-                img_bgr = cv2.imread(img_path)
-                if img_bgr is None:
-                    print(f"      \u274c Failed to read file with cv2: {img_path}")
-                    # Fallback to load_and_prepare_image + detection
-                    image_rgb = load_and_prepare_image(img_path)
-                    if image_rgb is None:
-                        print(f"      \u274c Fallback also failed to load")
-                        continue
-                    emb = get_face_embeddings(image_rgb)
-                    if emb:
-                        embeddings_list.append(np.asarray(emb[0]).ravel())
-                        print(f"      \u2705 Embedding (fallback): {np.asarray(emb[0]).ravel().shape}")
-                    else:
-                        print(f"      \u26a0\ufe0f No face detected in fallback")
-                else:
-                    # If the image was saved by enrollment it should already
-                    # be a normalized face (128x128). The recognition model
-                    # expects BGR input for get_feat, so pass directly.
-                    try:
-                        recognition_model = app.models['recognition']
-                        emb_vec = recognition_model.get_feat(img_bgr)
-                        if emb_vec is not None:
-                            embeddings_list.append(np.asarray(emb_vec).ravel())
-                            print(f"      \u2705 Embedding: {np.asarray(emb_vec).ravel().shape}")
-                        else:
-                            print(f"      \u26a0\ufe0f Recognition returned no embedding")
-                    except Exception as e:
-                        print(f"      \u274c Error extracting embedding: {e}")
-                        # As a last resort, try the detection path
+                print(f"   📷 Processing: {img_file}")
+                # Try fast path: images saved during enrollment are already
+                # normalized cropped face images. Read them directly and
+                # extract embedding without re-running detection which can
+                # fail on small/cropped images.
+                try:
+                    # Read with OpenCV (BGR)
+                    img_bgr = cv2.imread(img_path)
+                    if img_bgr is None:
+                        print(f"      \u274c Failed to read file with cv2: {img_path}")
+                        # Fallback to load_and_prepare_image + detection
                         image_rgb = load_and_prepare_image(img_path)
                         if image_rgb is None:
+                            print(f"      \u274c Fallback also failed to load")
                             continue
                         emb = get_face_embeddings(image_rgb)
                         if emb:
                             embeddings_list.append(np.asarray(emb[0]).ravel())
-                            print(f"      \u2705 Embedding (fallback2): {np.asarray(emb[0]).ravel().shape}")
+                            print(f"      \u2705 Embedding (fallback): {np.asarray(emb[0]).ravel().shape}")
                         else:
-                            print(f"      \u26a0\ufe0f No face detected in fallback2")
-            except Exception as e:
-                print(f"      \u274c Unexpected error processing {img_file}: {e}")
+                            print(f"      \u26a0\ufe0f No face detected in fallback")
+                    else:
+                        # If the image was saved by enrollment it should already
+                        # be a normalized face (128x128). The recognition model
+                        # expects BGR input for get_feat, so pass directly.
+                        try:
+                            recognition_model = app.models['recognition']
+                            emb_vec = recognition_model.get_feat(img_bgr)
+                            if emb_vec is not None:
+                                embeddings_list.append(np.asarray(emb_vec).ravel())
+                                print(f"      \u2705 Embedding: {np.asarray(emb_vec).ravel().shape}")
+                            else:
+                                print(f"      \u26a0\ufe0f Recognition returned no embedding")
+                        except Exception as e:
+                            print(f"      \u274c Error extracting embedding: {e}")
+                            # As a last resort, try the detection path
+                            image_rgb = load_and_prepare_image(img_path)
+                            if image_rgb is None:
+                                continue
+                            emb = get_face_embeddings(image_rgb)
+                            if emb:
+                                embeddings_list.append(np.asarray(emb[0]).ravel())
+                                print(f"      \u2705 Embedding (fallback2): {np.asarray(emb[0]).ravel().shape}")
+                            else:
+                                print(f"      \u26a0\ufe0f No face detected in fallback2")
+                except Exception as e:
+                    print(f"      \u274c Unexpected error processing {img_file}: {e}")
         
         if embeddings_list:
             enrolled[person_name] = embeddings_list
@@ -322,28 +322,31 @@ def match_face(uploaded_photo_base64, threshold=0.55):
                 print(f" - Face #{r['index']}: UNKNOWN -> Closest {r['name']} ({r['similarity']:.2%})")
         print("="*40 + "\n")
 
-        # Build a concise return message
-        if known_count > 0 and unknown_count == 0:
-            # All faces matched
-            matched_list = [f"{r['name']} ({r['similarity']:.2%})" for r in per_face_results if r['matched']]
-            result = "; ".join([f"Face recognized: {m}" for m in matched_list])
-        elif known_count > 0:
-            matched_list = [f"{r['name']} ({r['similarity']:.2%})" for r in per_face_results if r['matched']]
-            result = f"Mixed results - known: {', '.join(matched_list)}; unknown_count: {unknown_count}"
+        # Build a concise return message.
+        # New behavior: always reveal the closest name for each face along with
+        # its similarity (confidence) even if the similarity is below the
+        # threshold. This matches the user's request to always print the name
+        # and confidence (e.g., "Brian confidence 25").
+        messages = []
+        recognized_names = []
+        for r in per_face_results:
+            # Convert similarity to percentage-like integer for readability
+            sim_pct = float(r['similarity']) * 100.0
+            # Clamp and format to 2 decimal places
+            sim_str = f"{sim_pct:.2f}%"
+            # Prepare a plain message for the summary/result string
+            messages.append(f"{r['name']} confidence {sim_str}")
+            # Also store the formatted name for the UI list
+            recognized_names.append(f"{r['name']} ({sim_str})")
+
+        # Compose result string. If there are multiple faces, join with '; '
+        if messages:
+            result = "; ".join(messages)
         else:
-            # Do NOT reveal enrolled names when there are no confident matches.
-            # Report that no confident matches were found and include the best
-            # similarity (without the person's name) so user sees why it failed.
-            if per_face_results:
-                # find the best similarity across all faces
-                best_sim = max((r['similarity'] for r in per_face_results), default=0.0)
-                result = f"No confident matches. Best similarity: {best_sim:.2%}"
-            else:
-                result = "No match found"
+            result = "No match found"
+
         print(result)
         print("="*60 + "\n")
-        # Also return structured summary for UI
-        recognized_names = [f"{r['name']} ({r['similarity']:.2%})" for r in per_face_results if r['matched']]
         return result, known_count, unknown_count, recognized_names
 
     except Exception as e:

@@ -99,6 +99,11 @@ def enroll_face(name, camera_base64=None, upload_files=None, append=False):
     if not normalized_faces_all:
         raise ValueError('No valid normalized faces extracted from provided images')
 
+    # Ensure we only keep up to 3 face crops for an enrollment
+    if len(normalized_faces_all) > 3:
+        print(f"\u26a0\ufe0f More than 3 faces detected/cropped; keeping first 3 (was {len(normalized_faces_all)})")
+        normalized_faces_all = normalized_faces_all[:3]
+
     # Extract features
     new_features = extract_features_from_entire_list(normalized_faces_all)
     if not new_features:

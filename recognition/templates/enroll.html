@@ -12,13 +12,17 @@
     .small { font-size:12px; color:#666 }
     .row { display:flex; gap:8px; align-items:center }
     #video { border:1px solid #ddd; width:320px; height:240px; background:#000 }
+    .msg-success { color: #27ae60 }
+    .msg-error { color: #c0392b }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>Enroll Face</h2>
-    {% if message %}
-      <p><strong>{{ message }}</strong></p>
+    {% if messages %}
+      {% for msg in messages %}
+        <p class="{% if 'error' in msg.tags %}msg-error{% else %}msg-success{% endif %}"><strong>{{ msg }}</strong></p>
+      {% endfor %}
     {% endif %}
     <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
@@ -44,15 +48,19 @@
       <div style="margin-top:14px">
         <p class="small">Captured photo preview:</p>
         <img id="preview" src="" alt="Captured preview" style="width:160px; height:120px; border:1px solid #ddd; display:block; margin-bottom:8px; object-fit:cover" />
-        <button type="submit">Enroll</button>
+        <div style="display:flex; gap:8px;">
+          <button type="submit">Enroll</button>
+          <!-- Separate small form to post captured base64 directly to matching view -->
+          <form id="matchForm" method="post" action="{% url 'match' %}">
+            {% csrf_token %}
+            <input type="hidden" name="captured_photo" id="match_captured_photo" />
+            <button type="submit" id="matchBtn">Match</button>
+          </form>
+        </div>
       </div>
     </form>
 
-    <!-- Delete all enrollments (POST) -->
-    <form method="post" action="{% url 'delete_all_enrollments' %}" onsubmit="return confirm('Are you sure you want to DELETE all enrolled people? This cannot be undone.')" style="margin-top:12px">
-      {% csrf_token %}
-      <button type="submit" style="background:#e74c3c">Delete all enrolled people</button>
-    </form>
+    <!-- Delete-all enrollments removed per user request -->
   </div>
 
   <script>
@@ -71,6 +79,7 @@
       }
     });
 
+    const preview = document.getElementById('preview');
     snapBtn.addEventListener('click', () => {
       if (!stream) { alert('Start the camera first'); return }
       const canvas = document.createElement('canvas');
@@ -80,8 +89,30 @@
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const data = canvas.toDataURL('image/png');
       captured.value = data;
-      alert('Photo captured. You can now submit the form.');
+      preview.src = data;
+  // Also copy captured data into the match form hidden field so the
+  // separate Match button can submit it directly to the matching view.
+  const matchHidden = document.getElementById('match_captured_photo');
+  if (matchHidden) matchHidden.value = data;
+      // stop camera to save resources after taking the photo
+      try {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        video.srcObject = null;
+      } catch (e) {
+        // ignore
+      }
     });
+
+    // Keep the match hidden input in sync if the captured value changes
+    // (for example if a user re-takes the photo)
+    const capturedInput = document.getElementById('captured_photo');
+    if (capturedInput) {
+      capturedInput.addEventListener('change', () => {
+        const matchHidden = document.getElementById('match_captured_photo');
+        if (matchHidden) matchHidden.value = capturedInput.value;
+      });
+    }
   </script>
 </body>
 </html>
