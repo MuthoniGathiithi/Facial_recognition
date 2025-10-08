@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from detection import load_and_prepare_image, crop_detected_faces
+from .detection import load_and_prepare_image, crop_detected_faces
 import math
 
 
@@ -59,21 +59,3 @@ def normalize_entire_list(face_list,landmarks_list):
  
  
  
-if __name__ == "__main__":
-    from detection import multi_scale_detect  # Add this import
-    
-    image_path = '/home/muthoni-gathiithi/Downloads/kuwait.jpeg'
-    rgb_image = load_and_prepare_image(image_path)
-    
-    if rgb_image is not None:
-    # First detect faces
-     face_details = multi_scale_detect(rgb_image)
-     print(f"DEBUG: multi_scale_detect found {len(face_details)} faces")
-    
-    # Then crop them
-    face_list, landmarks_list = crop_detected_faces(face_details, rgb_image)
-    print(f"DEBUG: crop_detected_faces returned {len(face_list)} faces")
-    
-    if face_list is not None:
-        normalized_faces = normalize_entire_list(face_list, landmarks_list)
-        print(f"Normalized {len(normalized_faces)} faces to 128x128!")

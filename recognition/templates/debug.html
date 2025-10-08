@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Enrolled Faces</title>
+</head>
+<body>
+    <h1>Enrolled Faces Debug</h1>
+    <p><strong>Total enrolled people:</strong> {{ enrolled_count }}</p>
+    
+    {% if enrolled_people %}
+        <h2>Enrolled People:</h2>
+        <ul>
+        {% for person in enrolled_people %}
+            <li>{{ person }} - {{ details|get_item:person }} embedding(s)</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p style="color: red;">No faces enrolled yet!</p>
+    {% endif %}
+    
+    <br>
+    <a href="{% url 'landing' %}">Back to Home</a>
+</body>
+</html>

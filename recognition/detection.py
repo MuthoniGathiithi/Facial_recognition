@@ -3,9 +3,9 @@ import cv2
 import numpy as np
 import os
 
-# Initialize SCRFD detector
+# Initialize SCRFD detector - prepare it with a default size
 app = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
-
+app.prepare(ctx_id=0, det_size=(640, 640))
 
 # -------------------- PREPROCESSING -------------------- #
 def preprocess_image(image_bgr):
@@ -81,9 +81,6 @@ def remove_duplicates(faces, iou_threshold=0.5):
             unique_faces.append(f)
     return unique_faces
 
-
-
-
 def multi_scale_detect(image_rgb, scales=[640, 1024, 1280], base_thresh=0.3, min_thresh=0.1):
     """
     Run detection at multiple scales, with adaptive thresholding.
@@ -116,7 +113,6 @@ def multi_scale_detect(image_rgb, scales=[640, 1024, 1280], base_thresh=0.3, min
 
     return all_faces
 
-
 def crop_detected_faces(face_details, Image_RGB, det_thresh=0.3):
     """Crop faces and return cropped images + landmarks"""
     landmarks_list = []
@@ -129,23 +125,3 @@ def crop_detected_faces(face_details, Image_RGB, det_thresh=0.3):
         face_list.append(cropped_face)
         landmarks_list.append(face.kps.tolist())
     return face_list, landmarks_list
-
-# -------------------- MAIN -------------------- #
-if __name__ == "__main__":
-    image_path = '/home/muthoni-gathiithi/Downloads/manypl.jpg'
-    rgb_image = load_and_prepare_image(image_path)
-    if rgb_image is not None:
-        print(f"Image loaded successfully! Size: {rgb_image.shape}")
-
-        # Multi-scale detection
-        face_details = multi_scale_detect(rgb_image, scales=[640, 1024, 1280], base_thresh=0.3)
-
-        print(f"Multi-scale results: {len(face_details)} faces found")
-
-        # Print confidence scores
-        for i, face in enumerate(face_details):
-            print(f"Face {i+1}: confidence = {face.det_score:.4f}")
-
-        # Crop faces
-        face_list, landmarks_list = crop_detected_faces(face_details, rgb_image, det_thresh=0.3)
-        print(f"Final result: {len(face_list)} faces cropped!")

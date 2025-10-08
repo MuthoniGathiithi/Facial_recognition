@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face Matching</title>
+<style>
+body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #8246b9; color: white; }
+h1 { margin-bottom: 20px; }
+input, button { padding: 10px; margin: 10px; font-size: 1em; }
+#result { margin-top: 20px; font-size: 1.2em; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>Face Recognition</h1>
+
+<form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="file" name="photo" accept="image/*" required>
+    <br>
+    <button type="submit">Match Face</button>
+</form>
+
+<div id="result">
+    {% if result %}
+        {{ result }}
+    {% endif %}
+</div>
+
+{% if show_summary %}
+<div id="summary" style="margin-top:20px; display:flex; justify-content:center;">
+    <div style="background: rgba(255,255,255,0.08); padding:16px; border-radius:8px; width:320px; text-align:left;">
+        <div style="font-size:0.95em; margin-bottom:8px;">Known faces: <strong>{{ known_count }}</strong></div>
+        <div style="font-size:0.95em; margin-bottom:8px;">Unknown faces: <strong>{{ unknown_count }}</strong></div>
+        {% if recognized_names and recognized_names|length > 0 %}
+        <div style="font-size:0.95em; margin-top:8px;">Names:</div>
+        <ul style="margin:6px 0 0 18px; padding:0; list-style: disc;">
+            {% for n in recognized_names %}
+                <li style="font-size:0.92em;">{{ n }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div>
+    <a href="{% url 'landing' %}" style="color: white;">Back to Home</a>
+</div>
+</body>
+</html>

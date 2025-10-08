@@ -20,5 +20,5 @@ from recognition import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('enroll/', views.enroll, name='enroll'),
+    path('', include('recognition.urls')),
 ]
