@@ -4,10 +4,10 @@ import cv2
 import numpy as np
 import base64
 from django.conf import settings
+from .models import Person, FaceEmbedding, get_or_create_person, get_all_embeddings
 from .detection import load_and_prepare_image, multi_scale_detect, crop_detected_faces
 from .normalization import normalize_entire_list
 from .facial_extraction import extract_features_from_entire_list
-from .matching import load_enrolled_embeddings
 import json
 
 def enroll_face(name, camera_base64=None, upload_files=None, append=False):
@@ -105,63 +105,58 @@ def enroll_face(name, camera_base64=None, upload_files=None, append=False):
         normalized_faces_all = normalized_faces_all[:3]
 
     # Extract features
-    new_features = extract_features_from_entire_list(normalized_faces_all)
-    if not new_features:
-        raise ValueError('Failed to extract features from normalized faces')
+    features_list = extract_features_from_entire_list(normalized_faces_all)
+    if not features_list:
+        # Clean up temp files
+        for path in temp_paths_to_cleanup:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception as e:
+                print(f"Warning: Could not remove temp file {path}: {e}")
+        raise ValueError('No features could be extracted from the provided images')
 
-    # Check for duplicates (only error if matched to another existing person)
-    enrolled = load_enrolled_embeddings()
-    for nf in new_features:
-        nf_arr = np.asarray(nf).ravel()
-        for person, emb_list in enrolled.items():
-            for emb in emb_list:
-                emb_arr = np.asarray(emb).ravel()
-                sim = np.dot(emb_arr, nf_arr) / (np.linalg.norm(emb_arr) * np.linalg.norm(nf_arr))
-                if sim >= 0.95:
-                    # If appending to the same name, allow it; otherwise block
-                    if person != name:
-                        raise ValueError(f"Face already enrolled as '{person}' (similarity: {sim:.2%})")
-                    else:
-                        # matching self; if append is False, this may indicate duplicate upload
-                        if not append:
-                            raise ValueError(f"Face already enrolled as '{person}' (similarity: {sim:.2%})")
+    # Get existing embeddings from the database
+    existing_embeddings = get_all_embeddings()
+    
+    # Check for duplicates
+    for existing_name, emb_list in existing_embeddings.items():
+        for existing_emb in emb_list:
+            for new_emb in features_list:
+                similarity = np.dot(existing_emb, new_emb) / (
+                    np.linalg.norm(existing_emb) * np.linalg.norm(new_emb)
+                )
+                if similarity >= 0.95:  # High threshold for duplicate detection
+                    # Clean up temp files
+                    for path in temp_paths_to_cleanup:
+                        try:
+                            if os.path.exists(path):
+                                os.remove(path)
+                        except Exception as e:
+                            print(f"Warning: Could not remove temp file {path}: {e}")
+                    raise ValueError(f'This face is very similar to an existing enrollment for {existing_name} (similarity: {similarity:.4f})')
 
-    # Save normalized faces and embeddings
-    faces_dir = os.path.join(settings.MEDIA_ROOT, 'faces')
-    os.makedirs(faces_dir, exist_ok=True)
-    save_dir = os.path.join(faces_dir, name)
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
-    else:
-        # existing directory: if not append, treat as error to avoid accidental overwrite
-        if not append:
-            raise ValueError(f"User '{name}' is already enrolled")
+    # Get or create the person
+    person = get_or_create_person(name)
+    
+    # Save each embedding to the database
+    for embedding in features_list:
+        FaceEmbedding.create_from_embedding(person, embedding)
+    
+    print(f"✅ Saved {len(features_list)} embeddings to database for {name}")
 
-    saved_paths = []
-    for i, face in enumerate(normalized_faces_all, start=1):
-        save_path = os.path.join(save_dir, f"{name}_{i}.jpg")
-        face_bgr = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(save_path, face_bgr)
-        saved_paths.append(save_path)
-        print(f"💾 Saved normalized face: {save_path}")
-
-    # Persist embeddings.npy
-    emb_array = np.stack([np.asarray(f).ravel() for f in new_features], axis=0)
-    emb_path = os.path.join(save_dir, 'embeddings.npy')
-    try:
-        np.save(emb_path, emb_array)
-        print(f"🧾 Saved embeddings: {emb_path} ({emb_array.shape})")
-    except Exception as e:
-        print(f"⚠️ Failed to save embeddings.npy: {e}")
-
-    # Cleanup temp files created from base64 camera capture (but keep uploaded temp files removed by view)
-    for p in temp_paths_to_cleanup:
+    # Clean up temp files
+    for path in temp_paths_to_cleanup:
         try:
-            if p and p.startswith(temp_dir) and os.path.exists(p):
-                os.remove(p)
-                print(f"🗑️ Cleaned up temp file: {p}")
-        except Exception:
-            pass
+            if os.path.exists(path):
+                os.remove(path)
+                print(f"🗑️ Cleaned up temp file: {path}")
+        except Exception as e:
+            print(f"⚠️ Could not remove temp file {path}: {e}")
 
-    print(f"✅ Enrollment complete! Saved {len(saved_paths)} face(s)")
-    return saved_paths
+    print(f"✅ Enrollment complete! Saved {len(features_list)} face embedding(s)")
+    return {
+        'name': name,
+        'num_embeddings': len(features_list),
+        'status': 'success'
+    }

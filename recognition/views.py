@@ -14,14 +14,14 @@ def landing_view(request):
     return render(request, 'landing_page.html')
 
 def enroll(request):
-    # Use Django messages to communicate success/errors to the user
+    
     if request.method == 'POST':
         name = request.POST.get('name')
         camera_b64 = request.POST.get('captured_photo')
-        # Accept up to 2 uploaded files
+        
         upload_paths = []
         if request.FILES:
-            # Save up to 2 files to temp_uploads and pass their paths
+           
             for i, key in enumerate(request.FILES):
                 if i >= 2:
                     break
@@ -78,6 +78,12 @@ def matching_view(request):
     unknown_count = 0
     recognized_names = []
     show_summary = False
+    # Read threshold percent from env or settings (default 50%)
+    try:
+        thresh_pct = float(os.environ.get('FACE_MATCH_THRESHOLD_PERCENT', getattr(settings, 'FACE_MATCH_THRESHOLD_PERCENT', 50)))
+    except Exception:
+        thresh_pct = 50.0
+    threshold = thresh_pct / 100.0
     if request.method == 'POST' and request.FILES.get('photo'):
         photo = request.FILES['photo']
         temp_path = os.path.join(settings.BASE_DIR, 'temp_uploads', photo.name)
@@ -87,14 +93,14 @@ def matching_view(request):
             for chunk in photo.chunks():
                 f.write(chunk)
         
-        res = match_face(temp_path)
+        res = match_face(temp_path, threshold=threshold)
         # match_face now returns (result_msg, known_count, unknown_count, recognized_names)
         if isinstance(res, tuple) and len(res) == 4:
             result, known_count, unknown_count, recognized_names = res
             show_summary = True
         else:
             result = res
-        
+
         # Clean up temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -110,7 +116,7 @@ def matching_view(request):
     # Support camera-captured base64 POSTs (field name 'captured_photo')
     elif request.method == 'POST' and request.POST.get('captured_photo'):
         photo_b64 = request.POST.get('captured_photo')
-        res = match_face(photo_b64)
+        res = match_face(photo_b64, threshold=threshold)
         if isinstance(res, tuple) and len(res) == 4:
             result, known_count, unknown_count, recognized_names = res
             show_summary = True

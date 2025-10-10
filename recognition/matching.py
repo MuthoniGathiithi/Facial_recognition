@@ -5,6 +5,7 @@ import numpy as np
 import base64
 from django.conf import settings
 from insightface.app import FaceAnalysis
+from .models import get_all_embeddings
 from .detection import load_and_prepare_image, crop_detected_faces, multi_scale_detect
 from .normalization import normalize_entire_list
 
@@ -12,22 +13,12 @@ from .normalization import normalize_entire_list
 app = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
 
-# FIXED: Use absolute path construction
-MEDIA_DIR = os.path.join(settings.BASE_DIR, 'media', 'faces')
-
 # Debug print on module load
 print(f"\n{'='*60}")
 print(f"🔧 MATCHING MODULE LOADED")
 print(f"{'='*60}")
 print(f"BASE_DIR: {settings.BASE_DIR}")
 print(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
-print(f"MEDIA_DIR (faces): {MEDIA_DIR}")
-print(f"Directory exists: {os.path.exists(MEDIA_DIR)}")
-if os.path.exists(MEDIA_DIR):
-    items = os.listdir(MEDIA_DIR)
-    print(f"Items in directory: {items}")
-else:
-    print("⚠️ Directory does NOT exist!")
 print(f"{'='*60}\n")
 
 
@@ -55,135 +46,25 @@ def get_face_embeddings(image_rgb):
 
 
 def load_enrolled_embeddings():
-    """Load all enrolled face embeddings from the media/faces directory"""
+    """Load all enrolled face embeddings from the database"""
     print("\n" + "="*60)
-    print("📂 LOADING ENROLLED FACES")
+    print("📂 LOADING ENROLLED FACES FROM DATABASE")
     print("="*60)
     
-    enrolled = {}
+    # This now uses the get_all_embeddings function from models.py
+    enrolled = get_all_embeddings()
     
-    # Ensure directory exists
-    if not os.path.exists(MEDIA_DIR):
-        print(f"❌ MEDIA_DIR does not exist: {MEDIA_DIR}")
-        print("💡 Creating directory...")
-        os.makedirs(MEDIA_DIR, exist_ok=True)
-        return enrolled
-    
-    print(f"✅ MEDIA_DIR exists: {MEDIA_DIR}")
-    
-    # List all items in the directory
-    try:
-        all_items = os.listdir(MEDIA_DIR)
-        print(f"📋 Found {len(all_items)} item(s): {all_items}")
-    except Exception as e:
-        print(f"❌ Error reading directory: {e}")
-        return enrolled
-    
-    # Get person folders
-    person_folders = [f for f in all_items if os.path.isdir(os.path.join(MEDIA_DIR, f))]
-    
-    if not person_folders:
-        print(f"⚠️ No person folders found")
-        return enrolled
-    
-    print(f"👥 Found {len(person_folders)} person(s): {person_folders}")
-    
-    # Load embeddings for each person
-    for person_name in person_folders:
-        person_dir = os.path.join(MEDIA_DIR, person_name)
-        print(f"\n📂 Loading: {person_name}")
-        print(f"   Path: {person_dir}")
+    print(f"✅ Loaded {len(enrolled)} person(s) from database")
+    for name, embeddings in enrolled.items():
+        print(f"   👤 {name}: {len(embeddings)} embedding(s)")
         
-        embeddings_list = []
-        
-        try:
-            # Prefer loading persisted embeddings if present for speed
-            emb_path = os.path.join(person_dir, 'embeddings.npy')
-            if os.path.exists(emb_path):
-                try:
-                    arr = np.load(emb_path)
-                    # ensure 2D array
-                    if arr.ndim == 1:
-                        arr = arr.reshape(1, -1)
-                    for row in arr:
-                        embeddings_list.append(np.asarray(row).ravel())
-                    print(f"   🧾 Loaded persisted embeddings: {emb_path} ({len(embeddings_list)} items)")
-                except Exception as e:
-                    print(f"   ⚠️ Failed to load embeddings.npy ({e}), falling back to images")
-            # Fallback to reading image files if embeddings not loaded
-            if not embeddings_list:
-                image_files = [f for f in os.listdir(person_dir) 
-                              if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-                print(f"   🖼️ Image files: {image_files}")
-        except Exception as e:
-            print(f"   ❌ Error: {e}")
-            continue
-
-        # Only run image-based extraction if we didn't already load embeddings.npy
-        if not embeddings_list:
-            for img_file in image_files:
-                img_path = os.path.join(person_dir, img_file)
-                print(f"   📷 Processing: {img_file}")
-                # Try fast path: images saved during enrollment are already
-                # normalized cropped face images. Read them directly and
-                # extract embedding without re-running detection which can
-                # fail on small/cropped images.
-                try:
-                    # Read with OpenCV (BGR)
-                    img_bgr = cv2.imread(img_path)
-                    if img_bgr is None:
-                        print(f"      \u274c Failed to read file with cv2: {img_path}")
-                        # Fallback to load_and_prepare_image + detection
-                        image_rgb = load_and_prepare_image(img_path)
-                        if image_rgb is None:
-                            print(f"      \u274c Fallback also failed to load")
-                            continue
-                        emb = get_face_embeddings(image_rgb)
-                        if emb:
-                            embeddings_list.append(np.asarray(emb[0]).ravel())
-                            print(f"      \u2705 Embedding (fallback): {np.asarray(emb[0]).ravel().shape}")
-                        else:
-                            print(f"      \u26a0\ufe0f No face detected in fallback")
-                    else:
-                        # If the image was saved by enrollment it should already
-                        # be a normalized face (128x128). The recognition model
-                        # expects BGR input for get_feat, so pass directly.
-                        try:
-                            recognition_model = app.models['recognition']
-                            emb_vec = recognition_model.get_feat(img_bgr)
-                            if emb_vec is not None:
-                                embeddings_list.append(np.asarray(emb_vec).ravel())
-                                print(f"      \u2705 Embedding: {np.asarray(emb_vec).ravel().shape}")
-                            else:
-                                print(f"      \u26a0\ufe0f Recognition returned no embedding")
-                        except Exception as e:
-                            print(f"      \u274c Error extracting embedding: {e}")
-                            # As a last resort, try the detection path
-                            image_rgb = load_and_prepare_image(img_path)
-                            if image_rgb is None:
-                                continue
-                            emb = get_face_embeddings(image_rgb)
-                            if emb:
-                                embeddings_list.append(np.asarray(emb[0]).ravel())
-                                print(f"      \u2705 Embedding (fallback2): {np.asarray(emb[0]).ravel().shape}")
-                            else:
-                                print(f"      \u26a0\ufe0f No face detected in fallback2")
-                except Exception as e:
-                    print(f"      \u274c Unexpected error processing {img_file}: {e}")
-        
-        if embeddings_list:
-            enrolled[person_name] = embeddings_list
-            print(f"   ✅ Total: {len(embeddings_list)} embedding(s)")
-        else:
-            print(f"   ⚠️ No embeddings loaded")
-    
     print(f"\n📊 TOTAL ENROLLED: {len(enrolled)} person(s)")
     print("="*60 + "\n")
     
     return enrolled
 
 
-def match_face(uploaded_photo_base64, threshold=0.55):
+def match_face(uploaded_photo_base64, threshold=0.5):
     """Compare uploaded face (base64 or image) with enrolled embeddings"""
     print("\n" + "="*60)
     print("🔍 MATCHING STARTED")
@@ -322,28 +203,27 @@ def match_face(uploaded_photo_base64, threshold=0.55):
                 print(f" - Face #{r['index']}: UNKNOWN -> Closest {r['name']} ({r['similarity']:.2%})")
         print("="*40 + "\n")
 
-        # Build a concise return message.
-        # New behavior: always reveal the closest name for each face along with
-        # its similarity (confidence) even if the similarity is below the
-        # threshold. This matches the user's request to always print the name
-        # and confidence (e.g., "Brian confidence 25").
-        messages = []
+        # Build per-face summary: total faces detected, matched faces (>= threshold),
+        # and unknown faces = total_faces - known_faces. Only include names for
+        # matched faces so low-confidence matches don't leak identities.
+        total_faces = len(per_face_results)
+        matched_faces = [r for r in per_face_results if r.get('matched')]
+        known_count = len(matched_faces)
+        unknown_count = total_faces - known_count
+
+        # recognized_names: one entry per matched face (preserve face order)
         recognized_names = []
         for r in per_face_results:
-            # Convert similarity to percentage-like integer for readability
-            sim_pct = float(r['similarity']) * 100.0
-            # Clamp and format to 2 decimal places
-            sim_str = f"{sim_pct:.2f}%"
-            # Prepare a plain message for the summary/result string
-            messages.append(f"{r['name']} confidence {sim_str}")
-            # Also store the formatted name for the UI list
-            recognized_names.append(f"{r['name']} ({sim_str})")
+            if r.get('matched'):
+                sim_pct = float(r.get('similarity', 0.0)) * 100.0
+                sim_str = f"{sim_pct:.2f}%"
+                recognized_names.append(f"{r.get('name')} ({sim_str})")
 
-        # Compose result string. If there are multiple faces, join with '; '
-        if messages:
-            result = "; ".join(messages)
-        else:
-            result = "No match found"
+        # Result headline: always show total detected faces. If there are no
+        # confident matches, append a short notice (without revealing names).
+        result = f"Detected {total_faces} face(s)."
+        if known_count == 0:
+            result = result + " No enrolled face found"
 
         print(result)
         print("="*60 + "\n")

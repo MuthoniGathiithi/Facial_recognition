@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>Enroll Face</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f7f7f7; color: #222; }
+    body { font-family: Arial, sans-serif; background: #8246b9 }
     .container { max-width: 640px; margin: 40px auto; background: #fff; padding: 20px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);} 
     label { display:block; margin-top:12px; font-size:14px; }
     input[type=text], input[type=file] { width:100%; padding:8px; font-size:14px; }
@@ -50,14 +50,14 @@
         <img id="preview" src="" alt="Captured preview" style="width:160px; height:120px; border:1px solid #ddd; display:block; margin-bottom:8px; object-fit:cover" />
         <div style="display:flex; gap:8px;">
           <button type="submit">Enroll</button>
-          <!-- Separate small form to post captured base64 directly to matching view -->
-          <form id="matchForm" method="post" action="{% url 'match' %}">
-            {% csrf_token %}
-            <input type="hidden" name="captured_photo" id="match_captured_photo" />
-            <button type="submit" id="matchBtn">Match</button>
-          </form>
         </div>
       </div>
+    </form>
+    <!-- Separate Match form (placed outside enroll form to avoid nested forms) -->
+    <form id="matchForm" method="post" action="{% url 'match' %}" style="margin-top:12px;">
+      {% csrf_token %}
+      <input type="hidden" name="captured_photo" id="match_captured_photo" />
+      <button type="submit" id="matchBtn">Match Captured Photo</button>
     </form>
 
     <!-- Delete-all enrollments removed per user request -->
