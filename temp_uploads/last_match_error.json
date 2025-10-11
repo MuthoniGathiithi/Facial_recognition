@@ -1,0 +1,5 @@
+{
+  "error": "name 'JsonResponse' is not defined",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/muthoni-gathiithi/Face_Recognition/identiface/recognition/views.py\", line 193, in matching_view\n    return JsonResponse(response_data, status=500)\n           ^^^^^^^^^^^^\nNameError: name 'JsonResponse' is not defined\n",
+  "request_data": "<QueryDict: {'csrfmiddlewaretoken': ['3yQwvYQ07FAAFOwARMePmJq5vULtoQtd9ITBighYe5icz2YkteRZox1V9R7natKi']}>"
+}

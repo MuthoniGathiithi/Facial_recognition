@@ -65,7 +65,17 @@ def load_enrolled_embeddings():
 
 
 def match_face(uploaded_photo_base64, threshold=0.5):
-    """Compare uploaded face (base64 or image) with enrolled embeddings"""
+    """
+    Compare uploaded face (base64 or image) with enrolled embeddings.
+    
+    Returns:
+        tuple: (result_message, known_count, unknown_count, recognized_names, unknown_faces)
+            - result_message: String summary of the matching results
+            - known_count: Number of recognized faces
+            - unknown_count: Number of unknown faces
+            - recognized_names: List of names of recognized people
+            - unknown_faces: List of tuples (face_image_data, face_id) for unknown faces
+    """
     print("\n" + "="*60)
     print("🔍 MATCHING STARTED")
     print("="*60)
@@ -161,8 +171,21 @@ def match_face(uploaded_photo_base64, threshold=0.5):
         known_count = 0
         unknown_count = 0
         per_face_results = []
+        unknown_faces = []
+        
+        # Get normalized faces for unknown face handling
+        faces = multi_scale_detect(image_rgb)
+        face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
+        normalized_faces = normalize_entire_list(face_list, landmarks_list)
+        
+        # Ensure we have the same number of faces as embeddings
+        if len(normalized_faces) != len(uploaded_embeddings):
+            print(f"⚠️ Mismatch between detected faces ({len(normalized_faces)}) and embeddings ({len(uploaded_embeddings)}). Using first {min(len(normalized_faces), len(uploaded_embeddings))} faces.")
+            min_faces = min(len(normalized_faces), len(uploaded_embeddings))
+            normalized_faces = normalized_faces[:min_faces]
+            uploaded_embeddings = uploaded_embeddings[:min_faces]
 
-        for i, up_emb in enumerate(uploaded_embeddings, start=1):
+        for i, (up_emb, face_img) in enumerate(zip(uploaded_embeddings, normalized_faces), start=1):
             print(f"\n🔎 Uploaded face #{i} - matching against enrolled people...")
             best_person = None
             best_person_sim = -1.0
@@ -192,6 +215,18 @@ def match_face(uploaded_photo_base64, threshold=0.5):
                 unknown_count += 1
                 print(f"\n⚠️ Face #{i} NOT confidently recognized. Closest: {best_person} ({best_person_sim:.2%})")
                 per_face_results.append({'index': i, 'matched': False, 'name': best_person, 'similarity': best_person_sim, 'per_person': per_person_sims})
+                
+                # Save the unknown face
+                try:
+                    from .models import UnknownFace
+                    unknown_face = UnknownFace.create_from_face(up_emb, face_img)
+                    # Convert face image to base64 for the frontend
+                    _, buffer = cv2.imencode('.png', cv2.cvtColor(face_img, cv2.COLOR_RGB2BGR))
+                    img_str = base64.b64encode(buffer).decode('utf-8')
+                    unknown_faces.append((img_str, str(unknown_face.id)))
+                    print(f"💾 Saved unknown face with ID: {unknown_face.id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to save unknown face: {e}")
 
         # Summary
         print("\n" + "="*40)
@@ -222,12 +257,18 @@ def match_face(uploaded_photo_base64, threshold=0.5):
         # Result headline: always show total detected faces. If there are no
         # confident matches, append a short notice (without revealing names).
         result = f"Detected {total_faces} face(s)."
-        if known_count == 0:
-            result = result + " No enrolled face found"
+        if known_count == 0 and unknown_count == 0:
+            result = result + " No faces found"
+        elif known_count == 0:
+            result = result + f" Found {unknown_count} unknown face(s). Please provide names for them."
+        elif unknown_count > 0:
+            result = result + f" Recognized {known_count} face(s) and found {unknown_count} unknown face(s)."
+        else:
+            result = result + f" Recognized all {known_count} face(s)."
 
         print(result)
         print("="*60 + "\n")
-        return result, known_count, unknown_count, recognized_names
+        return result, known_count, unknown_count, recognized_names, unknown_faces
 
     except Exception as e:
         # On error, return a tuple with error message and zeroed counts

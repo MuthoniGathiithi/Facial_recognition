@@ -1,1 +1,7 @@
-{"result": "Error: OpenCV(4.12.0) /io/opencv/modules/imgproc/src/imgwarp.cpp:2720: error: (-215:Assertion failed) src.cols > 0 && src.rows > 0 in function 'warpAffine'\n", "known_count": 0, "unknown_count": 0, "recognized_names": [], "show_summary": true}
+{
+  "result": "Detected 15 face(s). Found 15 unknown face(s). Please provide names for them.",
+  "known_count": 0,
+  "unknown_count": 15,
+  "recognized_names": [],
+  "unknown_faces_count": 15
+}

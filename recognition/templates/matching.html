@@ -1,51 +1,409 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Face Matching</title>
-<style>
-body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #8246b9; color: white; }
-h1 { margin-bottom: 20px; }
-input, button { padding: 10px; margin: 10px; font-size: 1em; }
-#result { margin-top: 20px; font-size: 1.2em; font-weight: bold; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition - Matching</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #6a11cb; /* Solid purple background */
+            min-height: 100vh;
+            color: #fff;
+            padding: 2rem 0;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            margin-bottom: 2rem;
+        }
+        .card-header {
+            background: rgba(255, 255, 255, 0.15);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+        .btn-primary {
+            background: #4e54c8;
+            border: none;
+            padding: 10px 25px;
+            font-weight: 500;
+        }
+        .btn-primary:hover, .btn-primary:focus {
+            background: #434190;
+            outline: none;
+            box-shadow: none;
+        }
+        .face-card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .face-img {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner-border {
+            width: 3rem; 
+            height: 3rem;
+        }
+        #previewImage {
+            max-width: 100%;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        .result-section {
+            margin-top: 2rem;
+            display: none;
+        }
+        .unknown-faces {
+            margin-top: 2rem;
+        }
+        .form-control {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        .form-control:focus {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 0 0 0.25rem rgba(78, 84, 200, 0.25);
+        }
+        .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+    </style>
 </head>
 <body>
-<h1>Face Recognition</h1>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header text-center">
+                        Face Recognition System
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="photo" class="form-label">Upload an image for face recognition</label>
+                                <input class="form-control" type="file" id="photo" name="photo" accept="image/*" required>
+                            </div>
+                            <div class="text-center">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-search"></i> Detect Faces
+                                </button>
+                            </div>
+                        </form>
 
-<form method="POST" enctype="multipart/form-data">
-    {% csrf_token %}
-    <input type="file" name="photo" accept="image/*" required>
-    <br>
-    <button type="submit">Match Face</button>
-</form>
+                        <!-- Image Preview -->
+                        <div class="text-center mt-4">
+                            <img id="previewImage" alt="Preview will appear here">
+                        </div>
 
-<div id="result">
-    {% if result %}
-        {{ result }}
-    {% endif %}
-</div>
+                        <!-- Loading Indicator -->
+                        <div id="loading" class="loading">
+                            <div class="spinner-border text-light" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Processing image, please wait...</p>
+                        </div>
 
-{% if show_summary %}
-<div id="summary" style="margin-top:20px; display:flex; justify-content:center;">
-    <div style="background: rgba(255,255,255,0.08); padding:16px; border-radius:8px; width:320px; text-align:left;">
-        <div style="font-size:0.95em; margin-bottom:8px;">Known faces: <strong>{{ known_count }}</strong></div>
-        <div style="font-size:0.95em; margin-bottom:8px;">Unknown faces: <strong>{{ unknown_count }}</strong></div>
-        {% if recognized_names and recognized_names|length > 0 %}
-        <div style="font-size:0.95em; margin-top:8px;">Names:</div>
-        <ul style="margin:6px 0 0 18px; padding:0; list-style: disc;">
-            {% for n in recognized_names %}
-                <li style="font-size:0.92em;">{{ n }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
+                        <!-- Results -->
+                        <div id="resultSection" class="result-section">
+                            <div class="alert" id="resultAlert" role="alert">
+                                <h4 class="alert-heading" id="resultTitle">Results</h4>
+                                <div id="resultText"></div>
+                            </div>
+
+                            <!-- Known Faces -->
+                            <div id="knownFaces" class="mt-4">
+                                <h5>Recognized People</h5>
+                                <div id="knownFacesList" class="row">
+                                    <!-- Known faces will be added here -->
+                                </div>
+                            </div>
+
+                            <!-- Unknown Faces -->
+                            <div id="unknownFaces" class="unknown-faces mt-4">
+                                <h5>Unknown Faces</h5>
+                                <p>Please provide names for these faces to add them to the system.</p>
+                                <div id="unknownFacesList" class="row">
+                                    <!-- Unknown faces will be added here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="text-center mt-3">
+                    <a href="{% url 'landing' %}" class="btn btn-outline-light">
+                        <i class="fas fa-arrow-left"></i> Back to Home
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
-{% endif %}
 
-<div>
-    <a href="{% url 'landing' %}" style="color: white;">Back to Home</a>
-</div>
+    <!-- Success Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">Success!</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="successMessage">Face enrolled successfully!</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title text-danger">Error</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="errorMessage">An error occurred while processing your request.</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Font Awesome for icons -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    
+    <script>
+        // Global variables
+        let currentUnknownFaces = [];
+        
+        // When the document is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle file input change to show preview
+            document.getElementById('photo').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const preview = document.getElementById('previewImage');
+                        preview.src = e.target.result;
+                        preview.style.display = 'block';
+                        
+                        // Hide previous results when a new image is selected
+                        document.getElementById('resultSection').style.display = 'none';
+                    }
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // Handle form submission
+            document.getElementById('uploadForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                const loading = document.getElementById('loading');
+                const resultSection = document.getElementById('resultSection');
+                
+                // Show loading, hide results
+                loading.style.display = 'block';
+                resultSection.style.display = 'none';
+                
+                // Clear previous results
+                document.getElementById('knownFacesList').innerHTML = '';
+                document.getElementById('unknownFacesList').innerHTML = '';
+                
+                // Send the request
+                fetch('/match/', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Response:', data);
+                    loading.style.display = 'none';
+                    
+                    if (data.error) {
+                        showError(data.error);
+                        return;
+                    }
+                    
+                    // Update result text
+                    document.getElementById('resultText').textContent = data.message;
+                    document.getElementById('resultAlert').className = `alert ${data.known_count > 0 ? 'alert-success' : 'alert-warning'}`;
+                    
+                    // Display known faces
+                    if (data.recognized_names && data.recognized_names.length > 0) {
+                        const knownFacesDiv = document.getElementById('knownFacesList');
+                        data.recognized_names.forEach(name => {
+                            knownFacesDiv.innerHTML += `
+                                <div class="col-md-4 mb-3">
+                                    <div class="face-card">
+                                        <i class="fas fa-user-check fa-3x mb-2" style="color: #4caf50;"></i>
+                                        <p class="mb-0">${name}</p>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        document.getElementById('knownFaces').innerHTML = '<p>No known faces detected.</p>';
+                    }
+                    
+                    // Handle unknown faces
+                    if (data.unknown_faces && data.unknown_faces.length > 0) {
+                        currentUnknownFaces = data.unknown_faces;
+                        const unknownFacesDiv = document.getElementById('unknownFacesList');
+                        
+                        data.unknown_faces.forEach((face, index) => {
+                            const faceId = face[1];
+                            const faceImage = face[0];
+                            
+                            unknownFacesDiv.innerHTML += `
+                                <div class="col-md-6 col-lg-4 mb-4">
+                                    <div class="face-card">
+                                        <img src="data:image/png;base64,${faceImage}" class="face-img" alt="Unknown face">
+                                        <div class="input-group mb-2">
+                                            <input type="text" class="form-control person-name" placeholder="Enter name" aria-label="Person's name">
+                                            <button class="btn btn-success save-face" data-face-id="${faceId}">
+                                                <i class="fas fa-save"></i> Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        // Add event listeners to save buttons
+                        document.querySelectorAll('.save-face').forEach(button => {
+                            button.addEventListener('click', function() {
+                                const faceId = this.getAttribute('data-face-id');
+                                const nameInput = this.preElementSibling;
+                                const name = nameInput.value.trim();
+                                
+                                if (!name) {
+                                    showError('Please enter a name');
+                                    return;
+                                }
+                                
+                                enrollFace(faceId, name, this);
+                            });
+                        });
+                    } else {
+                        document.getElementById('unknownFaces').innerHTML = '<p>No unknown faces detected.</p>';
+                    }
+                    
+                    // Show results
+                    resultSection.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loading.style.display = 'none';
+                    showError('An error occurred while processing the image. Please try again.');
+                });
+            });
+        });
+        
+        // Function to enroll an unknown face
+        function enrollFace(faceId, name, button) {
+            const originalText = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+            
+            fetch('/api/enroll-unknown-face/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    face_id: faceId,
+                    name: name
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Show success message
+                    document.getElementById('successMessage').textContent = 
+                        `Successfully enrolled ${name} in the system!`;
+                    const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+                    successModal.show();
+                    
+                    // Remove the face card
+                    button.closest('.col-md-6').remove();
+                    
+                    // If no more unknown faces, update the UI
+                    if (document.querySelectorAll('.save-face').length === 0) {
+                        document.getElementById('unknownFaces').innerHTML = 
+                            '<div class="alert alert-success">All faces have been enrolled successfully!</div>';
+                    }
+                } else {
+                    throw new Error(data.message || 'Failed to enroll face');
+                }
+            })
+            .catch(error => {
+                console.error('Error enrolling face:', error);
+                showError(error.message || 'Failed to enroll face. Please try again.');
+                button.disabled = false;
+                button.innerHTML = originalText;
+            });
+        }
+        
+        // Helper function to show error messages
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+            errorModal.show();
+        }
+        
+        // Helper function to get CSRF token from cookies
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
 </body>
 </html>
