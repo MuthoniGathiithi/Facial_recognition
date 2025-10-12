@@ -17,9 +17,13 @@ from django.views.decorators.http import require_http_methods
 from .models import Person, FaceEmbedding
 from .enrollment_multiangle import FaceEnrollment
 import numpy as np
+from .quality_checker import check_occlusion, check_face_quality
+import time
 
 # Store active enrollments (in production, use Django's session or cache)
 active_enrollments = {}
+
+# Removed global memory storage - using database-only approach for Render deployment
 
 
 
@@ -103,9 +107,8 @@ def process_enrollment_frame(request):
         # Process the frame
         result = enrollment.process_frame()
         
-        # If enrollment is complete, save to database
+        # If enrollment is complete, cleanup (database save handled in EnrollmentState)
         if result.get('status') == 'complete':
-            save_enrollment_to_database(user_id, enrollment_data['name'], enrollment)
             # Clean up
             if user_id in active_enrollments:
                 del active_enrollments[user_id]
@@ -118,35 +121,7 @@ def process_enrollment_frame(request):
             'status': 'error'
         }, status=500)
 
-def save_enrollment_to_database(user_id, name, enrollment):
-    """Save the completed enrollment to the database"""
-    try:
-        # Get or create person (using name as unique identifier)
-        person, created = Person.objects.get_or_create(
-            name=name
-        )
-        
-        # If person exists but name is different, update it
-        if not created and person.name != name:
-            person.name = name
-            person.save()
-        
-        # Save each pose's embedding
-        if hasattr(enrollment, 'captured_poses'):
-            for pose_name, data in enrollment.captured_poses.items():
-                if data and 'embedding' in data:
-                    FaceEmbedding.objects.create(
-                        person=person,
-                        embedding=np.array(data['embedding']).tobytes(),
-                        pose=pose_name,
-                        image_path=data.get('frame_path', ''),
-                        quality_metrics=data.get('quality_metrics', {})
-                    )
-        
-        return True
-    except Exception as e:
-        print(f"Error saving enrollment to database: {str(e)}")
-        return False
+# Removed save_enrollment_to_database function - now handled in EnrollmentState class
 
 
 # New views for the real-time enrollment system
@@ -198,7 +173,6 @@ def start_enrollment(request):
         
         # Store user_id in session for tracking
         request.session['enrollment_user_id'] = user_id
-        request.session.save()  # Force save session
         print(f"Saved user_id to session: {user_id}")
         
         # Get initial status
@@ -229,14 +203,21 @@ def enrollment_status(request):
     """Get current enrollment status"""
     try:
         print("=== ENROLLMENT STATUS DEBUG ===")
-        user_id = request.session.get('enrollment_user_id')
-        print(f"Session user_id: {user_id}")
+        # Try to get user_id from URL parameter first (session-free approach)
+        user_id = request.GET.get('user_id')
+        if not user_id:
+            # Fallback to session for backward compatibility
+            user_id = request.session.get('enrollment_user_id')
+        
+        print(f"User_id from parameter: {request.GET.get('user_id')}")
+        print(f"User_id from session: {request.session.get('enrollment_user_id')}")
+        print(f"Final user_id: {user_id}")
         print(f"Active enrollments: {list(active_enrollments.keys())}")
         
         if not user_id:
-            print("ERROR: No user_id in session")
+            print("ERROR: No user_id in parameter or session")
             return JsonResponse({
-                'error': 'No active enrollment session',
+                'error': 'No active enrollment session. Please provide user_id parameter.',
                 'status': 'error'
             }, status=404)
             
@@ -274,13 +255,9 @@ def enrollment_status(request):
             result['status'] = 'complete'
             print("Enrollment is complete!")
         
-        # If enrollment is complete, save to database
+        # If enrollment is complete, cleanup (database save handled in EnrollmentState)
         if result.get('status') == 'complete':
-            success = save_enrollment_to_database(user_id, enrollment_data['name'], enrollment_state)
-            if success:
-                result['message'] = 'Enrollment completed and saved successfully!'
-            else:
-                result['message'] = 'Enrollment completed but failed to save to database'
+            result['message'] = 'Enrollment completed and saved successfully to database'
             
             # Clean up
             if user_id in active_enrollments:
@@ -307,8 +284,15 @@ def capture_pose(request):
     """Capture a pose from video frame"""
     try:
         print("=== CAPTURE POSE DEBUG ===")
-        user_id = request.session.get('enrollment_user_id')
-        print(f"Session user_id: {user_id}")
+        # Try to get user_id from POST parameter first (session-free approach)
+        user_id = request.POST.get('user_id')
+        if not user_id:
+            # Fallback to session for backward compatibility (local dev)
+            user_id = request.session.get('enrollment_user_id')
+        
+        print(f"User_id from POST: {request.POST.get('user_id')}")
+        print(f"User_id from session: {request.session.get('enrollment_user_id')}")
+        print(f"Final user_id: {user_id}")
         print(f"Active enrollments: {list(active_enrollments.keys())}")
         print(f"Request method: {request.method}")
         print(f"Request POST keys: {list(request.POST.keys())}")
@@ -390,10 +374,27 @@ def capture_pose(request):
             
             # Get the face rectangle
             (x, y, w, h) = faces[0]
+            face_bbox = (x, y, x + w, y + h)  # Convert to (x1, y1, x2, y2) format
             face_center_x = x + w // 2
             face_center_y = y + h // 2
             frame_center_x = frame.shape[1] // 2
             frame_center_y = frame.shape[0] // 2
+            
+            # Check for occlusions before pose validation
+            print("Checking for face occlusions...")
+            occlusion_valid, occlusion_message, occlusion_details = check_occlusion(frame, face_bbox)
+            
+            if not occlusion_valid:
+                print(f"❌ Occlusion detected: {occlusion_message}")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': occlusion_message,
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress(),
+                    'occlusion_details': occlusion_details
+                })
+            
+            print(f"✅ No significant occlusions detected")
             
             # Calculate relative position (simple pose estimation)
             horizontal_offset = (face_center_x - frame_center_x) / frame_center_x
@@ -411,56 +412,63 @@ def capture_pose(request):
             print(f"Required pose: {pose_name}")
             
             if pose_name == 'front':
-                # Front: face should be centered
-                print(f"Front check: |H|={abs(horizontal_offset):.3f} < 0.2? |V|={abs(vertical_offset):.3f} < 0.2?")
-                if abs(horizontal_offset) < 0.2 and abs(vertical_offset) < 0.2:
+                # Front: face should be reasonably centered (very forgiving)
+                print(f"Front check: |H|={abs(horizontal_offset):.3f} < 0.25? |V|={abs(vertical_offset):.3f} < 0.25?")
+                if abs(horizontal_offset) < 0.25 and abs(vertical_offset) < 0.25:
                     pose_valid = True
                     print("✅ Front pose valid!")
                 else:
-                    error_msg = f'Please look straight at the camera (H:{horizontal_offset:.2f}, V:{vertical_offset:.2f})'
+                    error_msg = f'Please position your face in the guide area'
                     print(f"❌ Front pose invalid: {error_msg}")
             
             elif pose_name == 'left':
-                # Left: face should be on the right side of frame (user's left)
-                print(f"Left check: H={horizontal_offset:.3f} > 0.15?")
-                if horizontal_offset > 0.15:
+                # Left: just a slight turn left is enough (very user-friendly)
+                print(f"Left check: H={horizontal_offset:.3f} > 0.12? (slight left turn)")
+                if horizontal_offset > 0.12:  # Just 12% movement is enough
                     pose_valid = True
                     print("✅ Left pose valid!")
                 else:
-                    error_msg = f'Please turn your head to YOUR LEFT (H:{horizontal_offset:.2f})'
+                    error_msg = f'Please turn your head slightly to YOUR LEFT'
                     print(f"❌ Left pose invalid: {error_msg}")
             
             elif pose_name == 'right':
-                # Right: face should be on the left side of frame (user's right)
-                print(f"Right check: H={horizontal_offset:.3f} < -0.15?")
-                if horizontal_offset < -0.15:
+                # Right: just a slight turn right is enough (very user-friendly)
+                print(f"Right check: H={horizontal_offset:.3f} < -0.12? (slight right turn)")
+                if horizontal_offset < -0.12:  # Just 12% movement is enough
                     pose_valid = True
                     print("✅ Right pose valid!")
                 else:
-                    error_msg = f'Please turn your head to YOUR RIGHT (H:{horizontal_offset:.2f})'
+                    error_msg = f'Please turn your head slightly to YOUR RIGHT'
                     print(f"❌ Right pose invalid: {error_msg}")
             
+            elif pose_name == 'down':
+                # Down: extremely forgiving - just a very tiny tilt down is enough
+                print(f"Down check: V={vertical_offset:.3f} < -0.05? (very tiny tilt down)")
+                if vertical_offset < -0.05:  # Just 5% movement is enough - extremely forgiving
+                    pose_valid = True
+                    print("✅ Down pose valid!")
+                else:
+                    error_msg = f'Please tilt your head slightly DOWN'
+                    print(f"❌ Down pose invalid: {error_msg}")
+            
             elif pose_name == 'up':
-                # Up: face should be in lower part of frame
+                # Up: face should be in lower part of frame (for future compatibility)
                 print(f"Up check: V={vertical_offset:.3f} > 0.15?")
                 if vertical_offset > 0.15:
                     pose_valid = True
                     print("✅ Up pose valid!")
                 else:
-                    error_msg = f'Please tilt your head UP (V:{vertical_offset:.2f})'
+                    error_msg = f'Please raise your head UP (V:{vertical_offset:.2f})'
                     print(f"❌ Up pose invalid: {error_msg}")
             
-            elif pose_name == 'down':
-                # Down: face should be in upper part of frame
-                print(f"Down check: V={vertical_offset:.3f} < -0.15?")
-                if vertical_offset < -0.15:
-                    pose_valid = True
-                    print("✅ Down pose valid!")
-                else:
-                    error_msg = f'Please lower your head DOWN (V:{vertical_offset:.2f})'
-                    print(f"❌ Down pose invalid: {error_msg}")
+            else:
+                # Unknown pose
+                error_msg = f'Unknown pose: {pose_name}'
+                print(f"❌ {error_msg}")
             
             if not pose_valid:
+                # Reset pose timer when pose becomes invalid
+                enrollment_state.reset_pose_timer()
                 return JsonResponse({
                     'status': 'error',
                     'message': error_msg,
@@ -469,7 +477,20 @@ def capture_pose(request):
                     'debug_position': {'h_offset': horizontal_offset, 'v_offset': vertical_offset}
                 })
             
-            print(f"✅ Correct {pose_name} pose detected! Capturing...")
+            # Check pose hold timer - require user to hold pose for 0.8 seconds
+            is_ready_for_capture, remaining_time = enrollment_state.check_pose_hold_timer(pose_name)
+            
+            if not is_ready_for_capture:
+                print(f"✅ Correct {pose_name} pose detected! Hold for {remaining_time:.1f} more seconds...")
+                return JsonResponse({
+                    'status': 'hold_pose',
+                    'message': f'Hold this position for {remaining_time:.1f} more seconds...',
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress(),
+                    'remaining_time': remaining_time
+                })
+            
+            print(f"✅ Correct {pose_name} pose held for 0.8 seconds! Capturing...")
             
         except Exception as e:
             print(f"Error in pose validation: {str(e)}")
@@ -484,7 +505,8 @@ def capture_pose(request):
         
         # Extract REAL face embedding using the same detection system as matching
         try:
-            from .detection import app as detection_app
+            from .detection import get_face_analysis_app
+            detection_app = get_face_analysis_app()
             
             print(f"Using shared InsightFace app from detection module")
             
@@ -589,10 +611,16 @@ def capture_pose(request):
 def stop_enrollment(request):
     """Stop the current enrollment session"""
     try:
-        user_id = request.session.get('enrollment_user_id')
+        # Try to get user_id from POST parameter first (session-free approach)
+        user_id = request.POST.get('user_id')
+        if not user_id:
+            # Fallback to session for backward compatibility (local dev)
+            user_id = request.session.get('enrollment_user_id')
+        
         if user_id and user_id in active_enrollments:
             del active_enrollments[user_id]
         
+        # Clean up session if it exists (local dev)
         if 'enrollment_user_id' in request.session:
             del request.session['enrollment_user_id']
         
@@ -641,6 +669,37 @@ def cancel_enrollment(request):
 
 def landing_view(request):
     return render(request, 'landing_page.html')
+
+def health_check(request):
+    """Health check endpoint for HF Spaces"""
+    import psutil
+    import os
+    
+    try:
+        # Get system info
+        memory_info = psutil.virtual_memory()
+        cpu_percent = psutil.cpu_percent()
+        
+        return JsonResponse({
+            'status': 'healthy',
+            'timestamp': time.time(),
+            'message': 'Face Recognition System is running',
+            'system_info': {
+                'memory_used_mb': round(memory_info.used / 1024 / 1024, 2),
+                'memory_percent': memory_info.percent,
+                'cpu_percent': cpu_percent,
+                'active_enrollments': len(active_enrollments),
+                'process_id': os.getpid()
+            }
+        })
+    except ImportError:
+        # Fallback if psutil not available
+        return JsonResponse({
+            'status': 'healthy',
+            'timestamp': time.time(),
+            'message': 'Face Recognition System is running',
+            'active_enrollments': len(active_enrollments)
+        })
 
 def enroll(request):
     
@@ -734,22 +793,41 @@ def matching_view(request):
                     # Ensure the file is an image
                     if not photo.content_type.startswith('image/'):
                         raise ValueError("Uploaded file is not an image")
+                    
+                    # Hybrid approach: Try file-based first (local dev), fallback to memory-based (Hugging Face)
+                    temp_path = None
+                    use_memory_processing = False
+                    
+                    try:
+                        # Try to create temp file (works in local development)
+                        temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
+                        os.makedirs(temp_dir, exist_ok=True)
+                        temp_filename = f"match_{uuid.uuid4().hex}_{photo.name}"
+                        temp_path = os.path.join(temp_dir, temp_filename)
                         
-                    # Create a unique filename to avoid conflicts
-                    temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
-                    os.makedirs(temp_dir, exist_ok=True)
-                    temp_filename = f"match_{uuid.uuid4().hex}_{photo.name}"
-                    temp_path = os.path.join(temp_dir, temp_filename)
-                    
-                    # Save the uploaded file
-                    with open(temp_path, 'wb+') as f:
+                        # Test write access
+                        with open(temp_path, 'wb+') as f:
+                            for chunk in photo.chunks():
+                                f.write(chunk)
+                        
+                        print(f"✅ Local development: Using file-based processing ({temp_path})")
+                        result = match_face(temp_path, threshold=threshold)
+                        
+                    except (OSError, PermissionError) as fs_error:
+                        # Filesystem is read-only (Hugging Face Spaces)
+                        print(f"⚠️ Filesystem write failed: {fs_error}")
+                        print("🔄 Switching to memory-based processing (Hugging Face mode)")
+                        use_memory_processing = True
+                        
+                        # Reset file pointer and read into memory
+                        photo.seek(0)
+                        image_data = b''
                         for chunk in photo.chunks():
-                            f.write(chunk)
+                            image_data += chunk
+                        
+                        print(f"📱 Hugging Face: Using memory-based processing ({len(image_data)} bytes)")
+                        result = match_face(image_data, threshold=threshold)
                     
-                    print(f"Temporary file saved to: {temp_path}")
-                    
-                    # Process the image from file
-                    result = match_face(temp_path, threshold=threshold)
                     print("Match face function completed successfully")
                     
                 except Exception as e:
@@ -777,19 +855,34 @@ def matching_view(request):
                 result_msg, known_count, unknown_count, recognized_names = result[:4]
                 unknown_faces = result[4] if len(result) > 4 else []
                 
-                # Write debug output
+                # Write debug output (if filesystem is writable)
                 try:
-                    debug_path = os.path.join(settings.BASE_DIR, 'temp_uploads', 'last_match_debug.json')
-                    with open(debug_path, 'w') as df:
-                        import json
-                        debug_data = {
-                            'result': result_msg,
-                            'known_count': known_count,
-                            'unknown_count': unknown_count,
-                            'recognized_names': recognized_names,
-                            'unknown_faces_count': len(unknown_faces) if unknown_faces else 0
-                        }
-                        json.dump(debug_data, df, indent=2)
+                    debug_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
+                    # Check if we can write to filesystem (Hugging Face compatibility)
+                    can_write = True
+                    try:
+                        os.makedirs(debug_dir, exist_ok=True)
+                        # Test write access
+                        test_file = os.path.join(debug_dir, 'test_write.tmp')
+                        with open(test_file, 'w') as f:
+                            f.write('test')
+                        os.remove(test_file)
+                    except (OSError, PermissionError):
+                        can_write = False
+                        print("⚠️ Filesystem is read-only, skipping debug file saving")
+                    
+                    if can_write:
+                        debug_path = os.path.join(debug_dir, 'last_match_debug.json')
+                        with open(debug_path, 'w') as df:
+                            import json
+                            debug_data = {
+                                'result': result_msg,
+                                'known_count': known_count,
+                                'unknown_count': unknown_count,
+                                'recognized_names': recognized_names,
+                                'unknown_faces_count': len(unknown_faces) if unknown_faces else 0
+                            }
+                            json.dump(debug_data, df, indent=2)
                 except Exception as e:
                     print(f"Error writing debug file: {str(e)}")
                 
@@ -825,16 +918,34 @@ def matching_view(request):
         except Exception as e:
             error_msg = f"An error occurred: {str(e)}"
             print(f"Error in matching_view: {error_msg}")
+            print(f"Full error traceback:")
+            import traceback
+            traceback.print_exc()
             try:
-                debug_path = os.path.join(settings.BASE_DIR, 'temp_uploads', 'last_match_error.json')
-                with open(debug_path, 'w') as df:
-                    import json, traceback
-                    error_data = {
-                        'error': str(e),
-                        'traceback': traceback.format_exc(),
-                        'request_data': str(request.POST) if request.method == 'POST' else 'GET request'
-                    }
-                    json.dump(error_data, df, indent=2)
+                debug_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
+                # Check if we can write to filesystem (Hugging Face compatibility)
+                can_write = True
+                try:
+                    os.makedirs(debug_dir, exist_ok=True)
+                    # Test write access
+                    test_file = os.path.join(debug_dir, 'test_write.tmp')
+                    with open(test_file, 'w') as f:
+                        f.write('test')
+                    os.remove(test_file)
+                except (OSError, PermissionError):
+                    can_write = False
+                    print("⚠️ Filesystem is read-only, skipping error debug file saving")
+                
+                if can_write:
+                    debug_path = os.path.join(debug_dir, 'last_match_error.json')
+                    with open(debug_path, 'w') as df:
+                        import json, traceback
+                        error_data = {
+                            'error': str(e),
+                            'traceback': traceback.format_exc(),
+                            'request_data': str(request.POST) if request.method == 'POST' else 'GET request'
+                        }
+                        json.dump(error_data, df, indent=2)
             except Exception as debug_error:
                 print(f"Error writing error debug file: {str(debug_error)}")
             
@@ -844,12 +955,13 @@ def matching_view(request):
             return render(request, 'matching.html', {'result': error_msg})
         
         finally:
-            # Clean up the temporary file if it exists
+            # Clean up temporary file if it was created (local development)
             if temp_path and os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
+                    print(f"🧹 Cleaned up temp file: {temp_path}")
                 except Exception as e:
-                    print(f"Error cleaning up temp file {temp_path}: {str(e)}")
+                    print(f"⚠️ Error cleaning up temp file {temp_path}: {str(e)}")
     
     # Handle GET request (show the form)
     if is_ajax:
