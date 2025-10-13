@@ -122,10 +122,15 @@ def enroll_face(name, camera_base64=None, upload_files=None, append=False):
     # Check for duplicates
     for existing_name, emb_list in existing_embeddings.items():
         for existing_emb in emb_list:
+            # Ensure both embeddings are 1D for dot product
+            existing_emb_flat = existing_emb.flatten()
             for new_emb in features_list:
-                similarity = np.dot(existing_emb, new_emb) / (
-                    np.linalg.norm(existing_emb) * np.linalg.norm(new_emb)
+                new_emb_flat = new_emb.flatten()
+                # Calculate cosine similarity
+                similarity = np.dot(existing_emb_flat, new_emb_flat) / (
+                    np.linalg.norm(existing_emb_flat) * np.linalg.norm(new_emb_flat)
                 )
+                print(f"Comparing with {existing_name}: similarity = {similarity:.4f}")
                 if similarity >= 0.95:  # High threshold for duplicate detection
                     # Clean up temp files
                     for path in temp_paths_to_cleanup:
