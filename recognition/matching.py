@@ -13,6 +13,7 @@ from .normalization import normalize_entire_list
 app = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
 
+
 # Debug print on module load
 print(f"\n{'='*60}")
 print(f"🔧 MATCHING MODULE LOADED")
@@ -23,26 +24,30 @@ print(f"{'='*60}\n")
 
 
 def get_face_embeddings(image_rgb):
-    """Extract embeddings for faces in an RGB image"""
-    faces = multi_scale_detect(image_rgb)
+    """Extract embeddings for faces in an RGB image using same method as enrollment"""
+    # Use the same detection app as enrollment for consistency
+    from .detection import app as detection_app
+    
+    # Convert RGB to BGR for InsightFace
+    image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+    
+    # Use the same app.get() method as enrollment
+    faces = detection_app.get(image_bgr)
     
     if not faces:
-        print("⚠️ No faces detected by InsightFace.")
+        print("❌ No faces detected")
         return []
     
     print(f"✅ Detected {len(faces)} face(s).")
     
-    face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
-    normalized_faces = normalize_entire_list(face_list, landmarks_list)
-    
     embeddings = []
-    for face in normalized_faces:
-        face_bgr = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
-        emb_data = app.models['recognition'].get_feat(face_bgr)
-        if emb_data is not None:
-            embeddings.append(np.asarray(emb_data).ravel())
+    for face in faces:
+        embedding = face.embedding.astype(np.float32)
+        embeddings.append(embedding)
+        print(f"✅ MATCHING extracted embedding: shape={embedding.shape}, norm={np.linalg.norm(embedding):.3f}")
     
     return embeddings
+
 
 
 def load_enrolled_embeddings():
@@ -114,20 +119,8 @@ def match_face(uploaded_photo_base64, threshold=0.5):
         print("🔍 Detecting faces...")
         h, w = image_rgb.shape[:2]
         if min(h, w) <= 150:
-            print(f"⚠️ Small image detected ({w}x{h}) - using direct embedding extraction")
-            try:
-                face_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
-                recognition_model = app.models['recognition']
-                emb = recognition_model.get_feat(face_bgr)
-                if emb is not None:
-                    uploaded_embeddings = [np.asarray(emb).ravel()]
-                    print(f"      ✅ Extracted embedding directly: {np.asarray(emb).ravel().shape}")
-                else:
-                    print("      ⚠️ Direct extraction returned no embedding")
-                    uploaded_embeddings = []
-            except Exception as e:
-                print(f"      ❌ Direct extraction error: {e}")
-                uploaded_embeddings = get_face_embeddings(image_rgb)
+            print(f"⚠️ Small image detected ({w}x{h}) - using same extraction as enrollment")
+            uploaded_embeddings = get_face_embeddings(image_rgb)
         else:
             uploaded_embeddings = get_face_embeddings(image_rgb)
         
@@ -276,4 +269,4 @@ def match_face(uploaded_photo_base64, threshold=0.5):
         import traceback
         traceback.print_exc()
         print("="*60 + "\n")
-        return f"Error: {str(e)}", 0, 0, []
+        return f"Error: {str(e)}", 0, 0, [], []  # Ensure all 5 return values are included
