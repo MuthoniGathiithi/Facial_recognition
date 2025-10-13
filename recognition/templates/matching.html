@@ -221,6 +221,11 @@
                         
                         // Hide previous results when a new image is selected
                         document.getElementById('resultSection').style.display = 'none';
+                        
+                        // Clear previous results
+                        document.getElementById('knownFacesList').innerHTML = '';
+                        document.getElementById('unknownFacesList').innerHTML = '';
+                        document.getElementById('resultText').textContent = '';
                     }
                     reader.readAsDataURL(file);
                 }
@@ -255,18 +260,30 @@
                     console.log('Response:', data);
                     loading.style.display = 'none';
                     
+                    // Clear previous results
+                    document.getElementById('knownFacesList').innerHTML = '';
+                    document.getElementById('unknownFacesList').innerHTML = '';
+                    
                     if (data.error) {
                         showError(data.error);
                         return;
                     }
                     
+                    // Show the result section
+                    const resultSection = document.getElementById('resultSection');
+                    resultSection.style.display = 'block';
+                    
                     // Update result text
-                    document.getElementById('resultText').textContent = data.message;
-                    document.getElementById('resultAlert').className = `alert ${data.known_count > 0 ? 'alert-success' : 'alert-warning'}`;
+                    const resultText = document.getElementById('resultText');
+                    resultText.textContent = data.message || 'Processing complete';
+                    
+                    // Set alert class based on results
+                    const resultAlert = document.getElementById('resultAlert');
+                    resultAlert.className = `alert ${data.known_count > 0 ? 'alert-success' : 'alert-warning'}`;
                     
                     // Display known faces
+                    const knownFacesDiv = document.getElementById('knownFacesList');
                     if (data.recognized_names && data.recognized_names.length > 0) {
-                        const knownFacesDiv = document.getElementById('knownFacesList');
                         data.recognized_names.forEach(name => {
                             knownFacesDiv.innerHTML += `
                                 <div class="col-md-4 mb-3">
@@ -282,13 +299,23 @@
                     }
                     
                     // Handle unknown faces
-                    if (data.unknown_faces && data.unknown_faces.length > 0) {
+                    const unknownFacesDiv = document.getElementById('unknownFacesList');
+                    if (data.unknown_count > 0 && data.unknown_faces && data.unknown_faces.length > 0) {
                         currentUnknownFaces = data.unknown_faces;
-                        const unknownFacesDiv = document.getElementById('unknownFacesList');
                         
                         data.unknown_faces.forEach((face, index) => {
-                            const faceId = face[1];
-                            const faceImage = face[0];
+                            let faceId, faceImage;
+                            
+                            // Handle both array and object formats for backward compatibility
+                            if (Array.isArray(face)) {
+                                [faceImage, faceId] = face;
+                            } else if (face.id && face.image) {
+                                faceId = face.id;
+                                faceImage = face.image;
+                            } else {
+                                console.error('Unknown face format:', face);
+                                return; // Skip invalid face data
+                            }
                             
                             unknownFacesDiv.innerHTML += `
                                 <div class="col-md-6 col-lg-4 mb-4">
