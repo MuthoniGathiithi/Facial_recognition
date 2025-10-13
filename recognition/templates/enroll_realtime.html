@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEW Multi-Angle Face Enrollment System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #8246b9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .enrollment-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 30px;
+            max-width: 800px;
+            width: 90%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .enrollment-form {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .video-section {
+            display: none;
+            text-align: center;
+        }
+
+        .video-container {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        #videoElement {
+            width: 640px;
+            height: 480px;
+            border: 3px solid #667eea;
+            border-radius: 15px;
+            background: #000;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .face-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 250px;
+            border: 3px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+        }
+
+        .instruction-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .instruction-text {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .pose-indicator {
+            font-size: 1.1em;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .progress-container {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 20px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: #8246b9;
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .pose-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .pose-item {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #e1e5e9;
+            transition: all 0.3s;
+        }
+
+        .pose-item.current {
+            border-color: #8246b9;
+            background: #f0f3ff;
+        }
+
+        .pose-item.completed {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+
+        .pose-icon {
+            font-size: 2em;
+            margin-bottom: 8px;
+        }
+
+        .pose-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #8246b9;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #7038a3;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            border-color: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            border-color: #545b62;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 10px;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            border-color: #bd2130;
+        }
+
+        .btn-success {
+            background: #28a745;
+            border-color: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 10px;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            border-color: #1e7e34;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .quality-indicators {
+            display: flex;
+            justify-content: space-around;
+            margin: 15px 0;
+        }
+
+        .quality-item {
+            text-align: center;
+            padding: 10px;
+        }
+
+        .quality-icon {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+
+        .quality-good { color: #28a745; }
+        .quality-bad { color: #dc3545; }
+        .quality-neutral { color: #6c757d; }
+
+        @media (max-width: 768px) {
+            #videoElement {
+                width: 100%;
+                height: auto;
+            }
+            
+            .pose-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="enrollment-container">
+        <div class="header">
+            <h1>NEW Multi-Angle Face Enrollment</h1>
+            <p>Professional 5-pose video capture system with automatic detection</p>
+        </div>
+
+        <!-- Name Input Form -->
+        <div class="enrollment-form" id="nameForm">
+            <div class="form-group">
+                <label for="userName">Enter Your Full Name:</label>
+                <input type="text" id="userName" placeholder="e.g., John Doe" required>
+            </div>
+            <div class="controls">
+                <button class="btn btn-primary" onclick="startEnrollment()">Start Enrollment</button>
+            </div>
+        </div>
+
+        <!-- Video Enrollment Section -->
+        <div class="video-section" id="videoSection">
+            <div class="instruction-panel">
+                <div class="instruction-text" id="instructionText">
+                    Position your face in the guide and follow the instructions
+                </div>
+                <div class="pose-indicator" id="poseIndicator">
+                    Current pose: Front
+                </div>
+            </div>
+
+            <div class="video-container">
+                <video id="videoElement" autoplay playsinline muted></video>
+                <div class="video-overlay">
+                    <div class="face-guide"></div>
+                </div>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-text" id="progressText">0% Complete</div>
+
+            <!-- Pose Progress Grid -->
+            <div class="pose-grid">
+                <div class="pose-item" id="pose-front">
+                    <div class="pose-name">Front</div>
+                </div>
+                <div class="pose-item" id="pose-left">
+                    <div class="pose-name">Left</div>
+                </div>
+                <div class="pose-item" id="pose-right">
+                    <div class="pose-name">Right</div>
+                </div>
+                <div class="pose-item" id="pose-up">
+                    <div class="pose-name">Up</div>
+                </div>
+                <div class="pose-item" id="pose-down">
+                    <div class="pose-name">Down</div>
+                </div>
+            </div>
+
+            <div id="statusMessage" class="status-message status-info">
+                Initializing camera...
+            </div>
+
+            <div class="controls">
+                <button class="btn btn-success" onclick="captureCurrentPose()" style="font-size: 12px;">DEBUG: Test Capture</button>
+                <button class="btn btn-secondary" onclick="cancelEnrollment()">Cancel</button>
+                <button class="btn btn-danger" onclick="stopEnrollment()">Stop Enrollment</button>
+                <button class="btn btn-primary" onclick="restartEnrollment()">Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let videoElement;
+        let stream;
+        let enrollmentActive = false;
+        let currentUser = '';
+        let enrollmentInterval;
+
+        // Pose mapping
+        const poseNames = ['front', 'left', 'right', 'up', 'down'];
+        const poseInstructions = {
+            'front': 'Please look straight at the camera. Hold still...',
+            'left': 'Please turn your head to YOUR LEFT (camera sees right). Hold still...',
+            'right': 'Please turn your head to YOUR RIGHT (camera sees left). Hold still...',
+            'up': 'Please tilt your head slightly up. Hold still...',
+            'down': 'Please tilt your head slightly down. Hold still...'
+        };
+        
+        let autoCaptureTimeout = null;
+
+        async function startEnrollment() {
+            console.log('=== START ENROLLMENT FUNCTION CALLED ===');
+            const userName = document.getElementById('userName').value.trim();
+            console.log('User name from input:', userName);
+            
+            if (!userName) {
+                alert('Please enter your name first');
+                return;
+            }
+
+            currentUser = userName;
+            console.log('Starting enrollment for:', userName);
+            
+            try {
+                // First call the backend to start enrollment
+                const response = await fetch('/start_enrollment/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        user_name: userName
+                    })
+                });
+
+                console.log('Start enrollment response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Start enrollment response data:', data);
+                    
+                    enrollmentActive = true;
+                    
+                    // Hide name form and show video section
+                    document.getElementById('nameForm').style.display = 'none';
+                    document.getElementById('videoSection').style.display = 'block';
+                    
+                    // Initialize camera
+                    await initializeCamera();
+                    
+                    // Update UI with initial data
+                    updateEnrollmentUI(data);
+                    
+                    // Start polling for enrollment status immediately
+                    enrollmentInterval = setInterval(pollEnrollmentStatus, 1000);
+                    // Also poll once immediately to get initial status
+                    setTimeout(pollEnrollmentStatus, 500);
+                    
+                    showStatus(data.message || 'Enrollment started! Position yourself in front of the camera.', 'success');
+                } else {
+                    const errorData = await response.json();
+                    console.error('Start enrollment error:', errorData);
+                    showStatus(errorData.error || 'Failed to start enrollment', 'error');
+                }
+            } catch (error) {
+                console.error('Start enrollment exception:', error);
+                showStatus('Error: ' + error.message, 'error');
+            }
+        }
+
+        async function initializeCamera() {
+            videoElement = document.getElementById('videoElement');
+            
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                videoElement.srcObject = stream;
+                showStatus('Camera initialized successfully', 'success');
+            } catch (error) {
+                throw new Error('Could not access camera: ' + error.message);
+            }
+        }
+
+        let lastPose = null;
+        let poseStartTime = null;
+
+        async function pollEnrollmentStatus() {
+            if (!enrollmentActive) return;
+
+            try {
+                console.log('Polling enrollment status...');
+                const response = await fetch('/enrollment_status/', {
+                    method: 'GET',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Enrollment status data:', data);
+                    updateEnrollmentUI(data);
+                    
+                    // Handle errors from backend
+                    if (data.status === 'error') {
+                        showStatus(data.message, 'error');
+                        // Don't auto-capture on error, let user try again
+                        return;
+                    }
+                    
+                    // Continuous pose checking - check pose every 500ms
+                    if (data.status === 'in_progress' && data.current_pose) {
+                        // Check if this is a new pose
+                        if (lastPose !== data.current_pose) {
+                            lastPose = data.current_pose;
+                            
+                            // Clear any existing timeout
+                            if (autoCaptureTimeout) {
+                                clearTimeout(autoCaptureTimeout);
+                            }
+                            
+                            // Show instruction for new pose
+                            showStatus(poseInstructions[data.current_pose], 'info');
+                        }
+                        
+                        // Continuously try to capture the correct pose
+                        if (!autoCaptureTimeout) {
+                            autoCaptureTimeout = setTimeout(async () => {
+                                if (enrollmentActive && lastPose === data.current_pose) {
+                                    console.log(`Checking ${data.current_pose} pose...`);
+                                    await captureCurrentPose();
+                                    autoCaptureTimeout = null; // Reset for next check
+                                }
+                            }, 500); // Check every 500ms
+                        }
+                    }
+                    
+                    if (data.status === 'complete') {
+                        completeEnrollment();
+                    }
+                } else {
+                    console.error('Failed to get enrollment status:', response.status);
+                    const errorData = await response.json();
+                    console.error('Error data:', errorData);
+                }
+            } catch (error) {
+                console.error('Error polling enrollment status:', error);
+            }
+        }
+
+        function updateEnrollmentUI(data) {
+            // Update progress bar
+            const progress = (data.progress || 0) * 100;
+            document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('progressText').textContent = Math.round(progress) + '% Complete';
+
+            // Update current pose indicator
+            if (data.current_pose) {
+                document.getElementById('poseIndicator').textContent = 
+                    `Step ${Math.floor(progress/20) + 1} of 5: ${data.current_pose.charAt(0).toUpperCase() + data.current_pose.slice(1)} View`;
+                document.getElementById('instructionText').textContent = 
+                    poseInstructions[data.current_pose] || 'Follow the instructions';
+            } else if (data.status === 'complete') {
+                document.getElementById('poseIndicator').textContent = 'Enrollment Complete!';
+                document.getElementById('instructionText').textContent = 'All poses captured successfully';
+            }
+
+            // Update pose grid
+            poseNames.forEach((pose, index) => {
+                const poseElement = document.getElementById(`pose-${pose}`);
+                poseElement.classList.remove('current', 'completed');
+                
+                if (data.completed_poses && data.completed_poses.includes(pose)) {
+                    poseElement.classList.add('completed');
+                    poseElement.innerHTML = `<div class="pose-name">${pose.charAt(0).toUpperCase() + pose.slice(1)} DONE</div>`;
+                } else if (data.current_pose === pose) {
+                    poseElement.classList.add('current');
+                    poseElement.innerHTML = `<div class="pose-name">${pose.charAt(0).toUpperCase() + pose.slice(1)} ACTIVE</div>`;
+                } else {
+                    poseElement.innerHTML = `<div class="pose-name">${pose.charAt(0).toUpperCase() + pose.slice(1)}</div>`;
+                }
+            });
+
+            // Update status message
+            if (data.message) {
+                const statusType = data.status === 'error' ? 'error' : 
+                                 data.status === 'captured' ? 'success' : 'info';
+                showStatus(data.message, statusType);
+            }
+        }
+
+        // Quality indicator function removed as requested
+
+        function completeEnrollment() {
+            enrollmentActive = false;
+            clearInterval(enrollmentInterval);
+            
+            showStatus('Enrollment completed successfully!', 'success');
+            
+            // Stop camera
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            // Show completion message and redirect option
+            setTimeout(() => {
+                if (confirm('Enrollment complete! Would you like to test face matching?')) {
+                    window.location.href = '/match/';
+                } else {
+                    window.location.href = '/';
+                }
+            }, 2000);
+        }
+
+        function stopEnrollment() {
+            enrollmentActive = false;
+            clearInterval(enrollmentInterval);
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            // Send stop signal to backend
+            fetch('/stop_enrollment/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+
+            // Reset UI
+            document.getElementById('nameForm').style.display = 'block';
+            document.getElementById('videoSection').style.display = 'none';
+        }
+
+        function cancelEnrollment() {
+            // Stop everything
+            enrollmentActive = false;
+            clearInterval(enrollmentInterval);
+            if (autoCaptureTimeout) {
+                clearTimeout(autoCaptureTimeout);
+            }
+            
+            // Stop camera
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            // Send stop signal to backend
+            fetch('/stop_enrollment/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+
+            // Reset UI - go back to name input
+            document.getElementById('nameForm').style.display = 'block';
+            document.getElementById('videoSection').style.display = 'none';
+            document.getElementById('userName').value = ''; // Clear name field
+            
+            showStatus('Enrollment cancelled. Enter your name to start again.', 'info');
+        }
+
+        function restartEnrollment() {
+            stopEnrollment();
+            setTimeout(() => {
+                startEnrollment();
+            }, 1000);
+        }
+
+        async function captureCurrentPose() {
+            if (!enrollmentActive) {
+                showStatus('Please start enrollment first', 'error');
+                return;
+            }
+
+            try {
+                console.log('=== CAPTURE CURRENT POSE CALLED ===');
+                console.log('Video element:', videoElement);
+                console.log('Video ready state:', videoElement?.readyState);
+                console.log('Video dimensions:', videoElement?.videoWidth, 'x', videoElement?.videoHeight);
+                
+                if (!videoElement || videoElement.readyState < 2) {
+                    showStatus('Camera not ready. Please wait...', 'error');
+                    return;
+                }
+
+                if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+                    showStatus('Invalid video dimensions. Please restart camera.', 'error');
+                    return;
+                }
+
+                // Capture frame from video element
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = videoElement.videoWidth;
+                canvas.height = videoElement.videoHeight;
+                ctx.drawImage(videoElement, 0, 0);
+                
+                // Convert to base64
+                const frameData = canvas.toDataURL('image/jpeg', 0.8);
+                console.log('Frame data length:', frameData.length);
+                
+                const response = await fetch('/capture_pose/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `frame_data=${encodeURIComponent(frameData)}`
+                });
+
+                console.log('Capture response status:', response.status);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Capture response data:', data);
+                    
+                    if (data.status === 'error') {
+                        // Show pose guidance with debug info if available
+                        let message = data.message;
+                        if (data.debug_position) {
+                            console.log('Debug position:', data.debug_position);
+                        }
+                        showStatus(message, 'info');
+                    } else {
+                        // Successful capture
+                        showStatus(data.message, 'success');
+                        // Update UI immediately
+                        updateEnrollmentUI(data);
+                        
+                        if (data.status === 'complete') {
+                            completeEnrollment();
+                        }
+                    }
+                } else {
+                    const errorText = await response.text();
+                    console.error('Capture failed:', errorText);
+                    showStatus('Failed to capture pose', 'error');
+                }
+            } catch (error) {
+                console.error('Capture error:', error);
+                showStatus('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Initialize when page loads
+        window.onload = function() {
+            console.log('Page loaded, JavaScript initialized');
+            console.log('startEnrollment function exists:', typeof startEnrollment);
+        };
+
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = `status-message status-${type}`;
+        }
+
+        // Utility function to get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>
