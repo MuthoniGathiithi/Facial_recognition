@@ -14,6 +14,21 @@
     #video { border:1px solid #ddd; width:320px; height:240px; background:#000 }
     .msg-success { color: #27ae60 }
     .msg-error { color: #c0392b }
+
+    .video-container {
+        position: relative;
+        margin: 0 auto;
+        width: 640px;
+        max-width: 100%;
+    }
+    
+    .face-box {
+        position: absolute;
+        border: 2px solid #4CAF50;
+        background: rgba(76, 175, 80, 0.2);
+    }
+    
+
   </style>
 </head>
 <body>
@@ -31,7 +46,10 @@
 
       <label class="small">1) Capture with webcam</label>
       <div class="row">
-        <video id="video" autoplay playsinline></video>
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            <div id="faceBox" class="face-box"></div>
+        </div>
         <div>
           <button type="button" id="startBtn">Start Camera</button>
           <button type="button" id="snapBtn">Take Photo</button>
@@ -63,56 +81,350 @@
     <!-- Delete-all enrollments removed per user request -->
   </div>
 
+  % extends 'base.html' %}
+
+  {% block content %}
+  <div class="container mt-5">
+      <div class="row">
+          <div class="col-md-8 offset-md-2">
+              <div class="card">
+                  <div class="card-header bg-primary text-white">
+                      <h4 class="mb-0">Face Enrollment</h4>
+                  </div>
+                  <div class="card-body">
+                      <!-- Name Input -->
+                      <div class="form-group mb-4" id="nameInputGroup">
+                          <label for="userName">Your Name</label>
+                          <input type="text" class="form-control form-control-lg" id="userName" 
+                                 placeholder="Enter your name" required>
+                          <small class="form-text text-muted">Please enter your full name as you'd like it to appear.</small>
+                      </div>
+  
+                      <div class="text-center mb-4">
+                          <div class="video-container mb-3">
+                              <video id="video" width="640" height="480" autoplay muted class="img-fluid rounded"></video>
+                              <canvas id="canvas" style="display: none;"></canvas>
+                          </div>
+                          
+                          <!-- Progress Section -->
+                          <div class="progress mb-3" style="height: 25px;">
+                              <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                   role="progressbar" style="width: 0%" 
+                                   aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                          </div>
+                          
+                          <!-- User Info Display (shown after name is entered) -->
+                          <div id="userInfo" class="alert alert-info" style="display: none;">
+                              Enrolling: <strong id="displayName"></strong>
+                          </div>
+                          
+                          <!-- Instruction Display -->
+                          <div id="instruction" class="alert alert-secondary">
+                              Please enter your name and click 'Start Enrollment'
+                          </div>
+                          
+                          <!-- Status Display -->
+                          <div id="status" class="alert" style="display: none;"></div>
+                      </div>
+                      
+                      <div class="text-center">
+                          <button id="startBtn" class="btn btn-primary btn-lg" disabled>
+                              <i class="fas fa-play"></i> Start Enrollment
+                          </button>
+                          <button id="cancelBtn" class="btn btn-danger btn-lg" disabled>
+                              <i class="fas fa-times"></i> Cancel
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+
   <script>
-    const video = document.getElementById('video');
-    const startBtn = document.getElementById('startBtn');
-    const snapBtn = document.getElementById('snapBtn');
-    const captured = document.getElementById('captured_photo');
-    let stream = null;
-
-    startBtn.addEventListener('click', async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-      } catch (e) {
-        alert('Could not access camera: ' + e.message);
-      }
+  
+  document.addEventListener('DOMContentLoaded', function() {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const progressBar = document.getElementById('progressBar');
+        const instructionEl = document.getElementById('instruction');
+        const statusEl = document.getElementById('status');
+        const userNameInput = document.getElementById('userName');
+        const nameInputGroup = document.getElementById('nameInputGroup');
+        const userInfoEl = document.getElementById('userInfo');
+        const displayNameEl = document.getElementById('displayName');
+        
+        let stream = null;
+        let enrollmentActive = false;
+        let processing = false;
+        let animationId = null;
+        let userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        
+        // Enable start button when name is entered
+        userNameInput.addEventListener('input', function() {
+            startBtn.disabled = !this.value.trim();
+        });
+        
+        // Set up camera
+        async function setupCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user' 
+                    } 
+                });
+                video.srcObject = stream;
+                return true;
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                showError("Could not access camera. Please check permissions.");
+                return false;
+            }
+        }
+        
+        // Start enrollment
+        startBtn.addEventListener('click', async function() {
+            if (enrollmentActive) return;
+            
+            const name = userNameInput.value.trim();
+            if (!name) {
+                showError("Please enter your name");
+                return;
+            }
+            
+            // Hide name input, show user info
+            nameInputGroup.style.display = 'none';
+            displayNameEl.textContent = name;
+            userInfoEl.style.display = 'block';
+            
+            // Initialize camera if not already done
+            if (!stream) {
+                if (!await setupCamera()) {
+                    return;
+                }
+            }
+            
+            // Disable start button, enable cancel button
+            startBtn.disabled = true;
+            cancelBtn.disabled = false;
+            enrollmentActive = true;
+            
+            // Start the enrollment process
+            startEnrollment(name);
+        });
+        
+        // Cancel enrollment
+        cancelBtn.addEventListener('click', function() {
+            if (!enrollmentActive) return;
+            
+            // Send cancel request to server
+            fetch('/api/enroll/multiangle/cancel/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFTTOKEN': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ user_id: userId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'cancelled') {
+                    resetUI("Enrollment cancelled");
+                }
+            })
+            .catch(error => {
+                console.error('Error cancelling enrollment:', error);
+                resetUI("Error cancelling enrollment");
+            });
+            
+            stopEnrollment();
+        });
+        
+        // Start the enrollment process
+        async function startEnrollment(name) {
+            try {
+                // Start enrollment on the server
+                const response = await fetch('/api/enroll/multiangle/start/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFTTOKEN': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        name: name
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Start processing frames
+                processFrames();
+                
+            } catch (error) {
+                console.error('Error starting enrollment:', error);
+                showError("Failed to start enrollment: " + error.message);
+                resetUI();
+            }
+        }
+        
+        // Process video frames
+        async function processFrames() {
+            if (!enrollmentActive) return;
+            
+            try {
+                // Capture frame from video
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Convert canvas to blob and send to server
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+                const formData = new FormData();
+                formData.append('frame', blob);
+                formData.append('user_id', userId);
+                
+                // Send frame to server for processing
+                const response = await fetch('/api/enroll/multiangle/process/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFTTOKEN': getCookie('csrftoken')
+                    },
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                // Update UI based on response
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+                
+                updateUI(result);
+                
+                // Continue processing if enrollment is still active
+                if (enrollmentActive && result.status !== 'complete') {
+                    animationId = requestAnimationFrame(processFrames);
+                } else if (result.status === 'complete') {
+                    enrollmentComplete();
+                }
+                
+            } catch (error) {
+                console.error('Error processing frame:', error);
+                showError("Error processing frame: " + error.message);
+                stopEnrollment();
+            }
+        }
+        
+        // Update UI based on server response
+        function updateUI(data) {
+            // Update progress bar
+            const progress = Math.round((data.progress || 0) * 100);
+            progressBar.style.width = `${progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
+            progressBar.textContent = `${progress}%`;
+            
+            // Update instruction
+            if (data.instruction) {
+                instructionEl.textContent = data.instruction;
+                instructionEl.className = 'alert alert-info';
+            }
+            
+            // Update status
+            if (data.status === 'error') {
+                statusEl.textContent = data.message || 'An error occurred';
+                statusEl.className = 'alert alert-danger';
+                statusEl.style.display = 'block';
+            } else {
+                statusEl.style.display = 'none';
+            }
+            
+            // Update button states
+            cancelBtn.disabled = data.status === 'complete';
+        }
+        
+        // Handle enrollment completion
+        function enrollmentComplete() {
+            showSuccess("Enrollment completed successfully!");
+            stopEnrollment();
+        }
+        
+        // Show error message
+        function showError(message) {
+            statusEl.textContent = message;
+            statusEl.className = 'alert alert-danger';
+            statusEl.style.display = 'block';
+        }
+        
+        // Show success message
+        function showSuccess(message) {
+            statusEl.textContent = message;
+            statusEl.className = 'alert alert-success';
+            statusEl.style.display = 'block';
+        }
+        
+        // Reset UI to initial state
+        function resetUI(message = null) {
+            if (message) {
+                showError(message);
+            }
+            progressBar.style.width = '0%';
+            progressBar.setAttribute('aria-valuenow', 0);
+            progressBar.textContent = '0%';
+            instructionEl.textContent = 'Please enter your name and click "Start Enrollment"';
+            instructionEl.className = 'alert alert-secondary';
+            nameInputGroup.style.display = 'block';
+            userInfoEl.style.display = 'none';
+            startBtn.disabled = false;
+            cancelBtn.disabled = true;
+        }
+        
+        // Stop enrollment and clean up
+        function stopEnrollment() {
+            enrollmentActive = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+        }
+        
+        // Helper function to get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        // Initialize
+        setupCamera().catch(console.error);
     });
+</script>
 
-    const preview = document.getElementById('preview');
-    snapBtn.addEventListener('click', () => {
-      if (!stream) { alert('Start the camera first'); return }
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const data = canvas.toDataURL('image/png');
-      captured.value = data;
-      preview.src = data;
-  // Also copy captured data into the match form hidden field so the
-  // separate Match button can submit it directly to the matching view.
-  const matchHidden = document.getElementById('match_captured_photo');
-  if (matchHidden) matchHidden.value = data;
-      // stop camera to save resources after taking the photo
-      try {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-        video.srcObject = null;
-      } catch (e) {
-        // ignore
-      }
-    });
 
-    // Keep the match hidden input in sync if the captured value changes
-    // (for example if a user re-takes the photo)
-    const capturedInput = document.getElementById('captured_photo');
-    if (capturedInput) {
-      capturedInput.addEventListener('change', () => {
-        const matchHidden = document.getElementById('match_captured_photo');
-        if (matchHidden) matchHidden.value = capturedInput.value;
-      });
-    }
+    
   </script>
 </body>
 </html>
