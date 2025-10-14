@@ -1,1 +1,1 @@
-web: bash -lc "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn identiface.wsgi:application --bind 0.0.0.0:$PORT --workers 3"
+web: bash -lc "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn identiface.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --worker-class=gthread --timeout 120 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50"
