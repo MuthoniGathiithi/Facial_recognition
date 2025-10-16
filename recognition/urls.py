@@ -1,6 +1,5 @@
 from django.urls import path
 from . import views
-from . import views_unknown
 
 urlpatterns = [
     path('', views.landing_view, name='landing'),
@@ -15,11 +14,7 @@ urlpatterns = [
     path('capture_pose/', views.capture_pose, name='capture_pose'),
     path('stop_enrollment/', views.stop_enrollment, name='stop_enrollment'),
     
-    # Unknown face handling endpoints
-    path('api/unknown-faces/', views_unknown.list_unknown_faces, name='list_unknown_faces'),
-    path('api/enroll-unknown-face/', views_unknown.enroll_unknown_face, name='enroll_unknown_face'),
-    
-    # Health check endpoint for HF Spaces
+    # Health check endpoint
     path('health/', views.health_check, name='health_check'),
 ]
 

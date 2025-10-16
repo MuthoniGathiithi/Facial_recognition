@@ -72,9 +72,6 @@
             margin-top: 2rem;
             display: none;
         }
-        .unknown-faces {
-            margin-top: 2rem;
-        }
         .form-control {
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -141,14 +138,7 @@
                                 </div>
                             </div>
 
-                            <!-- Unknown Faces -->
-                            <div id="unknownFaces" class="unknown-faces mt-4">
-                                <h5>Unknown Faces</h5>
-                                <p>Please provide names for these faces to add them to the system.</p>
-                                <div id="unknownFacesList" class="row">
-                                    <!-- Unknown faces will be added here -->
-                                </div>
-                            </div>
+                            <!-- Results show only recognized faces with confidence scores -->
                         </div>
                     </div>
                 </div>
@@ -224,7 +214,6 @@
                         
                         // Clear previous results
                         document.getElementById('knownFacesList').innerHTML = '';
-                        document.getElementById('unknownFacesList').innerHTML = '';
                         document.getElementById('resultText').textContent = '';
                     }
                     reader.readAsDataURL(file);
@@ -262,7 +251,6 @@
                     
                     // Clear previous results
                     document.getElementById('knownFacesList').innerHTML = '';
-                    document.getElementById('unknownFacesList').innerHTML = '';
                     
                     if (data.error) {
                         showError(data.error);
@@ -277,78 +265,21 @@
                     const resultText = document.getElementById('resultText');
                     resultText.textContent = data.message || 'Processing complete';
                     
-                    // Set alert class based on results
-                    const resultAlert = document.getElementById('resultAlert');
-                    resultAlert.className = `alert ${data.known_count > 0 ? 'alert-success' : 'alert-warning'}`;
-                    
-                    // Display known faces
-                    const knownFacesDiv = document.getElementById('knownFacesList');
-                    if (data.recognized_names && data.recognized_names.length > 0) {
-                        data.recognized_names.forEach(name => {
-                            knownFacesDiv.innerHTML += `
-                                <div class="col-md-4 mb-3">
+                    // Handle recognized faces with confidence scores
+                    if (data.known_count > 0 && data.recognized_names_with_confidence && data.recognized_names_with_confidence.length > 0) {
+                        data.recognized_names_with_confidence.forEach(person => {
+                            document.getElementById('knownFacesList').innerHTML += `
+                                <div class="col-md-6 col-lg-4 mb-3">
                                     <div class="face-card">
                                         <i class="fas fa-user-check fa-3x mb-2" style="color: #4caf50;"></i>
-                                        <p class="mb-0">${name}</p>
+                                        <p class="mb-0"><strong>${person.name}</strong></p>
+                                        <p class="text-muted small">Confidence: ${person.confidence}%</p>
                                     </div>
                                 </div>
                             `;
                         });
                     } else {
-                        document.getElementById('knownFaces').innerHTML = '<p>No known faces detected.</p>';
-                    }
-                    
-                    // Handle unknown faces
-                    const unknownFacesDiv = document.getElementById('unknownFacesList');
-                    if (data.unknown_count > 0 && data.unknown_faces && data.unknown_faces.length > 0) {
-                        currentUnknownFaces = data.unknown_faces;
-                        
-                        data.unknown_faces.forEach((face, index) => {
-                            let faceId, faceImage;
-                            
-                            // Handle both array and object formats for backward compatibility
-                            if (Array.isArray(face)) {
-                                [faceImage, faceId] = face;
-                            } else if (face.id && face.image) {
-                                faceId = face.id;
-                                faceImage = face.image;
-                            } else {
-                                console.error('Unknown face format:', face);
-                                return; // Skip invalid face data
-                            }
-                            
-                            unknownFacesDiv.innerHTML += `
-                                <div class="col-md-6 col-lg-4 mb-4">
-                                    <div class="face-card">
-                                        <img src="data:image/png;base64,${faceImage}" class="face-img" alt="Unknown face">
-                                        <div class="input-group mb-2">
-                                            <input type="text" class="form-control person-name" placeholder="Enter name" aria-label="Person's name">
-                                            <button class="btn btn-success save-face" data-face-id="${faceId}">
-                                                <i class="fas fa-save"></i> Save
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                        
-                        // Add event listeners to save buttons
-                        document.querySelectorAll('.save-face').forEach(button => {
-                            button.addEventListener('click', function() {
-                                const faceId = this.getAttribute('data-face-id');
-                                const nameInput = this.preElementSibling;
-                                const name = nameInput.value.trim();
-                                
-                                if (!name) {
-                                    showError('Please enter a name');
-                                    return;
-                                }
-                                
-                                enrollFace(faceId, name, this);
-                            });
-                        });
-                    } else {
-                        document.getElementById('unknownFaces').innerHTML = '<p>No unknown faces detected.</p>';
+                        document.getElementById('knownFaces').innerHTML = '<p>No faces recognized.</p>';
                     }
                     
                     // Show results
@@ -361,53 +292,6 @@
                 });
             });
         });
-        
-        // Function to enroll an unknown face
-        function enrollFace(faceId, name, button) {
-            const originalText = button.innerHTML;
-            button.disabled = true;
-            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
-            
-            fetch('/api/enroll-unknown-face/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    face_id: faceId,
-                    name: name
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // Show success message
-                    document.getElementById('successMessage').textContent = 
-                        `Successfully enrolled ${name} in the system!`;
-                    const successModal = new bootstrap.Modal(document.getElementById('successModal'));
-                    successModal.show();
-                    
-                    // Remove the face card
-                    button.closest('.col-md-6').remove();
-                    
-                    // If no more unknown faces, update the UI
-                    if (document.querySelectorAll('.save-face').length === 0) {
-                        document.getElementById('unknownFaces').innerHTML = 
-                            '<div class="alert alert-success">All faces have been enrolled successfully!</div>';
-                    }
-                } else {
-                    throw new Error(data.message || 'Failed to enroll face');
-                }
-            })
-            .catch(error => {
-                console.error('Error enrolling face:', error);
-                showError(error.message || 'Failed to enroll face. Please try again.');
-                button.disabled = false;
-                button.innerHTML = originalText;
-            });
-        }
         
         // Helper function to show error messages
         function showError(message) {

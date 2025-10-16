@@ -156,7 +156,6 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Create media directory if it doesn't exist
 os.makedirs(MEDIA_ROOT, exist_ok=True)
-os.makedirs(os.path.join(MEDIA_ROOT, 'faces'), exist_ok=True)
 
 # Standard security settings for Render deployment
 X_FRAME_OPTIONS = 'DENY'

@@ -769,9 +769,7 @@ def matching_view(request):
         'status': 'error',
         'message': 'Invalid request',
         'known_count': 0,
-        'unknown_count': 0,
-        'recognized_names': [],
-        'unknown_faces': []
+        'recognized_names_with_confidence': []
     }
     
     # Read threshold percent from env or settings (default 50%)
@@ -824,10 +822,9 @@ def matching_view(request):
                     return JsonResponse(response_data, status=400)
                 return render(request, 'matching.html', {'result': error_msg})
             
-            # match_face returns (result_msg, known_count, unknown_count, recognized_names, unknown_faces)
-            if isinstance(result, tuple) and len(result) >= 4:
-                result_msg, known_count, unknown_count, recognized_names = result[:4]
-                unknown_faces = result[4] if len(result) > 4 else []
+            # match_face returns (result_msg, known_count, recognized_names_with_confidence)
+            if isinstance(result, tuple) and len(result) >= 3:
+                result_msg, known_count, recognized_names_with_confidence = result[:3]
                 
                 # Write debug output (if filesystem is writable)
                 try:
@@ -852,9 +849,7 @@ def matching_view(request):
                             debug_data = {
                                 'result': result_msg,
                                 'known_count': known_count,
-                                'unknown_count': unknown_count,
-                                'recognized_names': recognized_names,
-                                'unknown_faces_count': len(unknown_faces) if unknown_faces else 0
+                                'recognized_names_with_confidence': recognized_names_with_confidence
                             }
                             json.dump(debug_data, df, indent=2)
                 except Exception as e:
@@ -865,9 +860,7 @@ def matching_view(request):
                     'status': 'success',
                     'message': result_msg,
                     'known_count': known_count,
-                    'unknown_count': unknown_count,
-                    'recognized_names': recognized_names,
-                    'unknown_faces': unknown_faces
+                    'recognized_names_with_confidence': recognized_names_with_confidence
                 })
                 
                 # If it's not an AJAX request, use the old template-based response
@@ -875,8 +868,7 @@ def matching_view(request):
                     return render(request, 'matching.html', {
                         'result': result_msg,
                         'known_count': known_count,
-                        'unknown_count': unknown_count,
-                        'recognized_names': recognized_names,
+                        'recognized_names_with_confidence': recognized_names_with_confidence,
                         'show_summary': True
                     })
                 

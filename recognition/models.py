@@ -56,59 +56,6 @@ class FaceEmbedding(models.Model):
         ordering = ['-created_at']
 
 
-class UnknownFace(models.Model):
-    """Model to temporarily store unknown faces for later identification."""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    embedding = models.BinaryField()  # Store serialized numpy array
-    face_image = models.ImageField(upload_to='unknown_faces/')
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    def get_embedding(self):
-        """Deserialize the stored embedding back to numpy array."""
-        return np.frombuffer(self.embedding, dtype=np.float32).reshape (1, -1)
-    
-    @classmethod
-    def create_from_face(cls, embedding, face_image_np):
-        """Create an UnknownFace from a numpy array and face image.
-        
-        Args:
-            embedding: Numpy array of shape (1, 512) or (512,)
-            face_image_np: Numpy array of the face image in RGB format
-        """
-        # Debug print the input embedding shape
-        print(f"[DEBUG] create_from_face - Input embedding shape: {embedding.shape}")
-        
-        # Ensure the embedding is a 1D array before saving
-        if len(embedding.shape) > 1:
-            embedding = embedding.reshape(-1)
-            
-        print(f"[DEBUG] create_from_face - Reshaped embedding to: {embedding.shape}")
-        
-        try:
-            # Convert numpy array to image
-            _, buffer = cv2.imencode('.png', cv2.cvtColor(face_image_np, cv2.COLOR_RGB2BGR))
-            face_image = ContentFile(buffer.tobytes(), 'unknown_face.png')
-            
-            # Save the unknown face to the database
-            unknown_face = cls.objects.create(
-                embedding=embedding.tobytes(),
-                face_image=face_image
-            )
-            
-            print(f"[DEBUG] Successfully created UnknownFace with ID: {unknown_face.id}")
-            return unknown_face
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to create UnknownFace: {str(e)}")
-            raise  # Re-raise the exception to be handled by the caller
-    
-    def enroll_as_person(self, name):
-        """Enroll this unknown face as a new person."""
-        person = get_or_create_person(name)
-        FaceEmbedding.create_from_embedding(person, self.get_embedding())
-        self.delete()  # Remove from unknown faces after enrollment
-        return person
-
 def get_or_create_person(name):
     """Helper function to get or create a person."""
     return Person.objects.get_or_create(name=name)[0]

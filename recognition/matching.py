@@ -87,12 +87,10 @@ def match_face(uploaded_photo_input, threshold=0.5):
             - Bytes object (image data)
     
     Returns:
-        tuple: (result_message, known_count, unknown_count, recognized_names, unknown_faces)
+        tuple: (result_message, known_count, recognized_names_with_confidence)
             - result_message: String summary of the matching results
             - known_count: Number of recognized faces
-            - unknown_count: Number of unknown faces
-            - recognized_names: List of names of recognized people
-            - unknown_faces: List of tuples (face_image_data, face_id) for unknown faces
+            - recognized_names_with_confidence: List of dicts with 'name' and 'confidence' keys
     """
     print("\n" + "="*60)
     print("🔍 MATCHING STARTED")
@@ -186,29 +184,14 @@ def match_face(uploaded_photo_input, threshold=0.5):
         
         print(f"🔍 Comparing with {len(enrolled_embeddings)} person(s)...")
         
-        # Match faces: compute best person per uploaded face and collect stats
+        # Match faces: compute best person per uploaded face
         known_count = 0
-        unknown_count = 0
-        per_face_results = []
-        unknown_faces = []
-        
-        # Get normalized faces for unknown face handling
-        faces = multi_scale_detect(image_rgb)
-        face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
-        normalized_faces = normalize_entire_list(face_list, landmarks_list)
-        
-        # Ensure we have the same number of faces as embeddings
-        if len(normalized_faces) != len(uploaded_embeddings):
-            print(f"⚠️ Mismatch between detected faces ({len(normalized_faces)}) and embeddings ({len(uploaded_embeddings)}). Using first {min(len(normalized_faces), len(uploaded_embeddings))} faces.")
-            min_faces = min(len(normalized_faces), len(uploaded_embeddings))
-            normalized_faces = normalized_faces[:min_faces]
-            uploaded_embeddings = uploaded_embeddings[:min_faces]
+        recognized_names_with_confidence = []
 
-        for i, (up_emb, face_img) in enumerate(zip(uploaded_embeddings, normalized_faces), start=1):
+        for i, up_emb in enumerate(uploaded_embeddings, start=1):
             print(f"\n🔎 Uploaded face #{i} - matching against enrolled people...")
             best_person = None
             best_person_sim = -1.0
-            per_person_sims = []
 
             for name, embeddings_list in enrolled_embeddings.items():
                 # compute max similarity for this person across their embeddings
@@ -217,77 +200,39 @@ def match_face(uploaded_photo_input, threshold=0.5):
                     sim = np.dot(emb, up_emb) / (np.linalg.norm(emb) * np.linalg.norm(up_emb))
                     sims.append(sim)
                 person_max = float(np.max(sims)) if sims else -1.0
-                per_person_sims.append((name, person_max))
                 print(f"   {name}: best similarity = {person_max:.4f}")
 
                 if person_max > best_person_sim:
                     best_person_sim = person_max
                     best_person = name
 
-            matched = False
             if best_person_sim >= threshold:
-                matched = True
                 known_count += 1
                 print(f"\n✅ Face #{i} recognized as {best_person} (confidence: {best_person_sim:.2%})")
-                per_face_results.append({'index': i, 'matched': True, 'name': best_person, 'similarity': best_person_sim, 'per_person': per_person_sims})
+                recognized_names_with_confidence.append({
+                    'name': best_person,
+                    'confidence': round(best_person_sim * 100, 1)  # Convert to percentage
+                })
             else:
-                unknown_count += 1
                 print(f"\n⚠️ Face #{i} NOT confidently recognized. Closest: {best_person} ({best_person_sim:.2%})")
-                per_face_results.append({'index': i, 'matched': False, 'name': best_person, 'similarity': best_person_sim, 'per_person': per_person_sims})
-                
-                # Save the unknown face
-                try:
-                    from .models import UnknownFace
-                    unknown_face = UnknownFace.create_from_face(up_emb, face_img)
-                    # Convert face image to base64 for the frontend
-                    _, buffer = cv2.imencode('.png', cv2.cvtColor(face_img, cv2.COLOR_RGB2BGR))
-                    img_str = base64.b64encode(buffer).decode('utf-8')
-                    unknown_faces.append((img_str, str(unknown_face.id)))
-                    print(f"💾 Saved unknown face with ID: {unknown_face.id}")
-                except Exception as e:
-                    print(f"⚠️ Failed to save unknown face: {e}")
 
         # Summary
         print("\n" + "="*40)
-        print(f"Summary: known_faces={known_count}, unknown_faces={unknown_count}")
-        for r in per_face_results:
-            if r['matched']:
-                print(f" - Face #{r['index']}: KNOWN -> {r['name']} ({r['similarity']:.2%})")
-            else:
-                print(f" - Face #{r['index']}: UNKNOWN -> Closest {r['name']} ({r['similarity']:.2%})")
+        print(f"Summary: {known_count} face(s) recognized")
+        for match_result in recognized_names_with_confidence:
+            print(f" - {match_result['name']}: {match_result['confidence']}% confidence")
         print("="*40 + "\n")
-
-        # Build per-face summary: total faces detected, matched faces (>= threshold),
-        # and unknown faces = total_faces - known_faces. Only include names for
-        # matched faces so low-confidence matches don't leak identities.
-        total_faces = len(per_face_results)
-        matched_faces = [r for r in per_face_results if r.get('matched')]
-        known_count = len(matched_faces)
-        unknown_count = total_faces - known_count
-
-        # recognized_names: one entry per matched face (preserve face order)
-        recognized_names = []
-        for r in per_face_results:
-            if r.get('matched'):
-                sim_pct = float(r.get('similarity', 0.0)) * 100.0
-                sim_str = f"{sim_pct:.2f}%"
-                recognized_names.append(f"{r.get('name')} ({sim_str})")
-
-        # Result headline: always show total detected faces. If there are no
-        # confident matches, append a short notice (without revealing names).
-        result = f"Detected {total_faces} face(s)."
-        if known_count == 0 and unknown_count == 0:
-            result = result + " No faces found"
-        elif known_count == 0:
-            result = result + f" Found {unknown_count} unknown face(s). Please provide names for them."
-        elif unknown_count > 0:
-            result = result + f" Recognized {known_count} face(s) and found {unknown_count} unknown face(s)."
+        
+        # Build result message
+        total_faces = len(uploaded_embeddings)
+        if known_count == 0:
+            result_msg = f"Detected {total_faces} face(s). No faces recognized."
         else:
-            result = result + f" Recognized all {known_count} face(s)."
+            result_msg = f"Detected {total_faces} face(s). Recognized {known_count} face(s)."
 
-        print(result)
+        print(result_msg)
         print("="*60 + "\n")
-        return result, known_count, unknown_count, recognized_names, unknown_faces
+        return result_msg, known_count, recognized_names_with_confidence
 
     except Exception as e:
         # On error, return a tuple with error message and zeroed counts
@@ -295,4 +240,4 @@ def match_face(uploaded_photo_input, threshold=0.5):
         import traceback
         traceback.print_exc()
         print("="*60 + "\n")
-        return f"Error: {str(e)}", 0, 0, [], []  # Ensure all 5 return values are included
+        return f"Error: {str(e)}", 0, []
