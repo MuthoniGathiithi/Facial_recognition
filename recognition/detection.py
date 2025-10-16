@@ -11,36 +11,79 @@ def get_face_analysis_app():
     """Lazy load the FaceAnalysis model - loads only on first use"""
     global app
     if app is None:
-        print("🔄 Loading InsightFace model (first time only)...")
-        
-        # Import InsightFace only when needed to avoid startup issues
-        from insightface.app import FaceAnalysis
-        
-        # Set model directory to writable location for Render deployment
-        model_root = os.environ.get('INSIGHTFACE_HOME', '/tmp/insightface')
-        print(f"Model download path: {model_root}")
-        
-        # Ensure the directory exists
-        os.makedirs(model_root, exist_ok=True)
-        print(f"✅ Model directory created/verified: {model_root}")
-        
-        app = FaceAnalysis(name="buffalo_l", root=model_root, providers=['CPUExecutionProvider'])
-        app.prepare(ctx_id=0, det_size=(640, 640))
-        print("✅ InsightFace model loaded successfully")
-        
-        # Debug: Print model information
-        print("=== INSIGHTFACE MODEL DEBUG ===")
-        for model_name, model in app.models.items():
-            print(f"Model: {model_name}")
-            if hasattr(model, 'output_size'):
-                print(f"  Output size: {model.output_size}")
-            if hasattr(model, 'input_size'):
-                print(f"  Input size: {model.input_size}")
-            if hasattr(model, 'taskname'):
-                print(f"  Task: {model.taskname}")
-            if hasattr(model, 'output_shape'):
-                print(f"  Output shape: {model.output_shape}")
-        print("==========================================")
+        try:
+            print("🔄 DEBUGGING: Loading InsightFace model (first time only)...")
+            
+            # Check if InsightFace can be imported
+            try:
+                from insightface.app import FaceAnalysis
+                print("✅ Successfully imported InsightFace")
+            except Exception as e:
+                print(f"❌ CRITICAL: Cannot import InsightFace: {e}")
+                return None
+            
+            # Set model directory to writable location for Render deployment
+            model_root = os.environ.get('INSIGHTFACE_HOME', '/tmp/insightface')
+            print(f"Model download path: {model_root}")
+            
+            # Ensure the directory exists
+            try:
+                os.makedirs(model_root, exist_ok=True)
+                print(f"✅ Model directory created/verified: {model_root}")
+                
+                # Check if directory is writable
+                test_file = os.path.join(model_root, 'test_write.tmp')
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
+                print(f"✅ Model directory is writable: {model_root}")
+            except Exception as e:
+                print(f"❌ CRITICAL: Cannot create/write to model directory: {e}")
+                return None
+            
+            # Try to create FaceAnalysis app
+            try:
+                print("🔄 Creating FaceAnalysis instance...")
+                app = FaceAnalysis(name="buffalo_l", root=model_root, providers=['CPUExecutionProvider'])
+                print("✅ FaceAnalysis instance created")
+            except Exception as e:
+                print(f"❌ CRITICAL: Cannot create FaceAnalysis instance: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+            
+            # Try to prepare the app
+            try:
+                print("🔄 Preparing FaceAnalysis app (downloading models if needed)...")
+                app.prepare(ctx_id=0, det_size=(640, 640))
+                print("✅ FaceAnalysis app prepared successfully")
+            except Exception as e:
+                print(f"❌ CRITICAL: Cannot prepare FaceAnalysis app: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+            
+            print("✅ InsightFace model loaded successfully")
+            
+            # Debug: Print model information
+            print("=== INSIGHTFACE MODEL DEBUG ===")
+            for model_name, model in app.models.items():
+                print(f"Model: {model_name}")
+                if hasattr(model, 'output_size'):
+                    print(f"  Output size: {model.output_size}")
+                if hasattr(model, 'input_size'):
+                    print(f"  Input size: {model.input_size}")
+                if hasattr(model, 'taskname'):
+                    print(f"  Task: {model.taskname}")
+                if hasattr(model, 'output_shape'):
+                    print(f"  Output shape: {model.output_shape}")
+            print("==========================================")
+            
+        except Exception as e:
+            print(f"❌ CRITICAL: Overall InsightFace loading failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     return app
 

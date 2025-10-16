@@ -17,62 +17,75 @@ print(f"\n{'='*60}")
 print(f"🔧 MATCHING MODULE LOADED")
 print(f"{'='*60}")
 print(f"BASE_DIR: {settings.BASE_DIR}")
+print(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
 print(f"{'='*60}\n")
 
 
 def get_face_embeddings(image_rgb):
-    """Extract embeddings for faces in an RGB image with speed optimization"""
+    """Extract embeddings for faces in an RGB image with debugging"""
     try:
-        # Resize image for balance between memory and accuracy
-        h, w = image_rgb.shape[:2]
-        max_size = 640  # Balanced size for face recognition accuracy
-        if max(h, w) > max_size:
-            scale = max_size / max(h, w)
-            new_h, new_w = int(h * scale), int(w * scale)
-            image_rgb = cv2.resize(image_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"⚡ Balanced resize from {w}x{h} to {new_w}x{new_h} for accuracy vs memory")
+        print("🔧 DEBUGGING: Starting face embedding extraction...")
         
-        # Use the same detection app as enrollment for consistency
-        print("🔧 Loading InsightFace for matching...")
-        from .detection import get_face_analysis_app
-        app = get_face_analysis_app()
-        
-        if app is None:
-            print("❌ CRITICAL: Failed to get face analysis app for matching!")
-            print("❌ This usually means InsightFace models failed to download or load")
+        # Check if we can import InsightFace at all
+        try:
+            from .detection import get_face_analysis_app
+            print("✅ Successfully imported get_face_analysis_app")
+        except Exception as e:
+            print(f"❌ CRITICAL: Cannot import detection module: {e}")
             return []
         
-        print("✅ InsightFace app loaded successfully for matching")
+        # Try to get the face analysis app
+        try:
+            print("🔄 Attempting to load InsightFace model...")
+            detection_app = get_face_analysis_app()
+            print(f"✅ InsightFace app loaded: {detection_app is not None}")
+        except Exception as e:
+            print(f"❌ CRITICAL: InsightFace failed to load: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+        
+        if detection_app is None:
+            print("❌ CRITICAL: InsightFace app is None!")
+            return []
         
         # Convert RGB to BGR for InsightFace
         image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+        print(f"✅ Converted image to BGR: {image_bgr.shape}")
         
-        # Get faces with embeddings
-        faces = app.get(image_bgr)
+        # Try to detect faces
+        try:
+            print("🔍 Attempting face detection...")
+            faces = detection_app.get(image_bgr)
+            print(f"✅ Face detection completed: {len(faces) if faces else 0} faces")
+        except Exception as e:
+            print(f"❌ CRITICAL: Face detection failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
         
         if not faces:
             print("❌ No faces detected by InsightFace")
             return []
         
-        print(f"✅ InsightFace detected {len(faces)} face(s)")
+        print(f"✅ Detected {len(faces)} face(s)")
         
-        # Limit to first 3 faces for reasonable processing
-        if len(faces) > 3:
-            faces = faces[:3]
-            print(f"⚡ Limited to first 3 faces for reasonable processing")
-        
-        # Extract embeddings
+        # Extract embeddings with error handling
         embeddings = []
         for i, face in enumerate(faces):
-            if hasattr(face, 'embedding') and face.embedding is not None:
-                embedding = face.embedding
-                # Normalize the embedding
-                embedding = embedding / np.linalg.norm(embedding)
-                embeddings.append(embedding)
-                print(f"  Face {i+1}: embedding shape {embedding.shape}")
-            else:
-                print(f"  Face {i+1}: no embedding available")
+            try:
+                if hasattr(face, 'embedding') and face.embedding is not None:
+                    embedding = face.embedding
+                    # Normalize the embedding
+                    embedding = embedding / np.linalg.norm(embedding)
+                    embeddings.append(embedding)
+                    print(f"✅ Face {i+1}: extracted embedding shape {embedding.shape}")
+                else:
+                    print(f"❌ Face {i+1}: no embedding available")
+            except Exception as e:
+                print(f"❌ Face {i+1}: embedding extraction failed: {e}")
         
+        print(f"✅ Successfully extracted {len(embeddings)} embeddings")
         return embeddings
         
     except Exception as e:
@@ -80,11 +93,7 @@ def get_face_embeddings(image_rgb):
         import traceback
         traceback.print_exc()
         return []
-    finally:
-        # Clean up memory
-        import gc
-        gc.collect()
-        print("🧹 Memory cleanup completed")
+
 
 
 def load_enrolled_embeddings():
@@ -106,7 +115,7 @@ def load_enrolled_embeddings():
     return enrolled
 
 
-def match_face(uploaded_photo_input, threshold=0.5):
+def match_face(uploaded_photo_input, threshold=0.6):
     """
     Compare uploaded face (base64, file path, or bytes) with enrolled embeddings.
     
@@ -117,10 +126,12 @@ def match_face(uploaded_photo_input, threshold=0.5):
             - Bytes object (image data)
     
     Returns:
-        tuple: (result_message, known_count, recognized_names_with_confidence)
+        tuple: (result_message, known_count, unknown_count, recognized_names, unknown_faces)
             - result_message: String summary of the matching results
             - known_count: Number of recognized faces
-            - recognized_names_with_confidence: List of dicts with 'name' and 'confidence' keys
+            - unknown_count: Number of unknown faces
+            - recognized_names: List of names of recognized people
+            - unknown_faces: List of tuples (face_image_data, face_id) for unknown faces
     """
     print("\n" + "="*60)
     print("🔍 MATCHING STARTED")
@@ -171,9 +182,39 @@ def match_face(uploaded_photo_input, threshold=0.5):
         
         print(f"✅ Found {len(uploaded_embeddings)} face(s)")
 
-        # Skip debug file operations for faster matching
-        print("⚡ Optimized for speed - skipping debug operations")
-
+        # Save normalized crops to temp_uploads for debugging inspection (if filesystem is writable)
+        try:
+            temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
+            # Check if we can write to filesystem (Hugging Face compatibility)
+            can_write = True
+            try:
+                os.makedirs(temp_dir, exist_ok=True)
+                # Test write access
+                test_file = os.path.join(temp_dir, 'test_write.tmp')
+                with open(test_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_file)
+            except (OSError, PermissionError):
+                can_write = False
+                print("⚠️ Filesystem is read-only, skipping debug file saving")
+            
+            if can_write:
+                # We need to regenerate normalized faces from the image so we save the
+                # actual cropped/normalized images used for embedding extraction.
+                # Use the detection + normalization pipeline to get the face crops.
+                faces = multi_scale_detect(image_rgb)
+                if faces:
+                    face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
+                    normalized_faces = normalize_entire_list(face_list, landmarks_list)
+                    for idx, face in enumerate(normalized_faces, start=1):
+                        save_path = os.path.join(temp_dir, f"debug_match_face_{idx}.png")
+                        # face is RGB, convert to BGR for cv2
+                        face_bgr = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
+                        cv2.imwrite(save_path, face_bgr)
+                        print(f"💾 Saved normalized crop: {save_path}")
+        except Exception as e:
+            print(f"⚠️ Could not save debug crops: {e}")
+        
         # Load enrolled faces
         print("📂 Loading enrolled faces...")
         enrolled_embeddings = load_enrolled_embeddings()
@@ -184,14 +225,29 @@ def match_face(uploaded_photo_input, threshold=0.5):
         
         print(f"🔍 Comparing with {len(enrolled_embeddings)} person(s)...")
         
-        # Match faces: compute best person per uploaded face
+        # Match faces: compute best person per uploaded face and collect stats
         known_count = 0
-        recognized_names_with_confidence = []
+        unknown_count = 0
+        per_face_results = []
+        unknown_faces = []
+        
+        # Get normalized faces for unknown face handling
+        faces = multi_scale_detect(image_rgb)
+        face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
+        normalized_faces = normalize_entire_list(face_list, landmarks_list)
+        
+        # Ensure we have the same number of faces as embeddings
+        if len(normalized_faces) != len(uploaded_embeddings):
+            print(f"⚠️ Mismatch between detected faces ({len(normalized_faces)}) and embeddings ({len(uploaded_embeddings)}). Using first {min(len(normalized_faces), len(uploaded_embeddings))} faces.")
+            min_faces = min(len(normalized_faces), len(uploaded_embeddings))
+            normalized_faces = normalized_faces[:min_faces]
+            uploaded_embeddings = uploaded_embeddings[:min_faces]
 
-        for i, up_emb in enumerate(uploaded_embeddings, start=1):
+        for i, (up_emb, face_img) in enumerate(zip(uploaded_embeddings, normalized_faces), start=1):
             print(f"\n🔎 Uploaded face #{i} - matching against enrolled people...")
             best_person = None
             best_person_sim = -1.0
+            per_person_sims = []
 
             for name, embeddings_list in enrolled_embeddings.items():
                 # compute max similarity for this person across their embeddings
@@ -200,39 +256,77 @@ def match_face(uploaded_photo_input, threshold=0.5):
                     sim = np.dot(emb, up_emb) / (np.linalg.norm(emb) * np.linalg.norm(up_emb))
                     sims.append(sim)
                 person_max = float(np.max(sims)) if sims else -1.0
+                per_person_sims.append((name, person_max))
                 print(f"   {name}: best similarity = {person_max:.4f}")
 
                 if person_max > best_person_sim:
                     best_person_sim = person_max
                     best_person = name
 
+            matched = False
             if best_person_sim >= threshold:
+                matched = True
                 known_count += 1
                 print(f"\n✅ Face #{i} recognized as {best_person} (confidence: {best_person_sim:.2%})")
-                recognized_names_with_confidence.append({
-                    'name': best_person,
-                    'confidence': round(best_person_sim * 100, 1)  # Convert to percentage
-                })
+                per_face_results.append({'index': i, 'matched': True, 'name': best_person, 'similarity': best_person_sim, 'per_person': per_person_sims})
             else:
+                unknown_count += 1
                 print(f"\n⚠️ Face #{i} NOT confidently recognized. Closest: {best_person} ({best_person_sim:.2%})")
+                per_face_results.append({'index': i, 'matched': False, 'name': best_person, 'similarity': best_person_sim, 'per_person': per_person_sims})
+                
+                # Save the unknown face
+                try:
+                    from .models import UnknownFace
+                    unknown_face = UnknownFace.create_from_face(up_emb, face_img)
+                    # Convert face image to base64 for the frontend
+                    _, buffer = cv2.imencode('.png', cv2.cvtColor(face_img, cv2.COLOR_RGB2BGR))
+                    img_str = base64.b64encode(buffer).decode('utf-8')
+                    unknown_faces.append((img_str, str(unknown_face.id)))
+                    print(f"💾 Saved unknown face with ID: {unknown_face.id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to save unknown face: {e}")
 
         # Summary
         print("\n" + "="*40)
-        print(f"Summary: {known_count} face(s) recognized")
-        for match_result in recognized_names_with_confidence:
-            print(f" - {match_result['name']}: {match_result['confidence']}% confidence")
+        print(f"Summary: known_faces={known_count}, unknown_faces={unknown_count}")
+        for r in per_face_results:
+            if r['matched']:
+                print(f" - Face #{r['index']}: KNOWN -> {r['name']} ({r['similarity']:.2%})")
+            else:
+                print(f" - Face #{r['index']}: UNKNOWN -> Closest {r['name']} ({r['similarity']:.2%})")
         print("="*40 + "\n")
-        
-        # Build result message
-        total_faces = len(uploaded_embeddings)
-        if known_count == 0:
-            result_msg = f"Detected {total_faces} face(s). No faces recognized."
-        else:
-            result_msg = f"Detected {total_faces} face(s). Recognized {known_count} face(s)."
 
-        print(result_msg)
+        # Build per-face summary: total faces detected, matched faces (>= threshold),
+        # and unknown faces = total_faces - known_faces. Only include names for
+        # matched faces so low-confidence matches don't leak identities.
+        total_faces = len(per_face_results)
+        matched_faces = [r for r in per_face_results if r.get('matched')]
+        known_count = len(matched_faces)
+        unknown_count = total_faces - known_count
+
+        # recognized_names: one entry per matched face (preserve face order)
+        recognized_names = []
+        for r in per_face_results:
+            if r.get('matched'):
+                sim_pct = float(r.get('similarity', 0.0)) * 100.0
+                sim_str = f"{sim_pct:.2f}%"
+                recognized_names.append(f"{r.get('name')} ({sim_str})")
+
+        # Result headline: always show total detected faces. If there are no
+        # confident matches, append a short notice (without revealing names).
+        result = f"Detected {total_faces} face(s)."
+        if known_count == 0 and unknown_count == 0:
+            result = result + " No faces found"
+        elif known_count == 0:
+            result = result + f" Found {unknown_count} unknown face(s). Please provide names for them."
+        elif unknown_count > 0:
+            result = result + f" Recognized {known_count} face(s) and found {unknown_count} unknown face(s)."
+        else:
+            result = result + f" Recognized all {known_count} face(s)."
+
+        print(result)
         print("="*60 + "\n")
-        return result_msg, known_count, recognized_names_with_confidence
+        return result, known_count, unknown_count, recognized_names, unknown_faces
 
     except Exception as e:
         # On error, return a tuple with error message and zeroed counts
@@ -240,9 +334,4 @@ def match_face(uploaded_photo_input, threshold=0.5):
         import traceback
         traceback.print_exc()
         print("="*60 + "\n")
-        return f"Error: {str(e)}", 0, []
-    finally:
-        # Clean up memory after matching
-        import gc
-        gc.collect()
-        print("🧹 Memory cleanup after matching completed")
+        return f"Error: {str(e)}", 0, 0, [], []  # Ensure all 5 return values are included

@@ -507,15 +507,49 @@ def capture_pose(request):
         
         # Extract REAL face embedding using the same detection system as matching
         try:
-            print("🔧 Loading InsightFace for embedding extraction...")
-            from .detection import get_face_analysis_app
-            detection_app = get_face_analysis_app()
+            print("🔧 DEBUGGING: Starting embedding extraction for pose capture...")
             
-            if detection_app is None:
-                print("❌ CRITICAL: InsightFace app failed to load!")
+            # Add timeout for InsightFace loading
+            import time
+            load_start = time.time()
+            
+            # Test if detection module can be imported
+            try:
+                from .detection import get_face_analysis_app
+                print("✅ Successfully imported get_face_analysis_app")
+            except Exception as e:
+                print(f"❌ CRITICAL: Cannot import detection module: {e}")
                 return JsonResponse({
                     'status': 'error',
-                    'message': 'Face recognition system not available. Please try again later.',
+                    'message': f'Detection module import failed: {str(e)}',
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress()
+                })
+            
+            # Try to get the InsightFace app
+            try:
+                print("🔄 Attempting to get InsightFace app...")
+                detection_app = get_face_analysis_app()
+                print(f"✅ InsightFace app result: {detection_app is not None}")
+            except Exception as e:
+                print(f"❌ CRITICAL: get_face_analysis_app failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'InsightFace loading failed: {str(e)}',
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress()
+                })
+            
+            load_time = time.time() - load_start
+            print(f"⏱️ InsightFace load time: {load_time:.2f} seconds")
+            
+            if detection_app is None:
+                print("❌ CRITICAL: InsightFace app is None!")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Face recognition system not available. Check server logs.',
                     'current_pose': current_pose['name'],
                     'progress': enrollment_state.get_progress()
                 })
@@ -531,12 +565,35 @@ def capture_pose(request):
                         print(f"Recognition model feat_dim: {model.feat_dim}")
             
             # Convert frame to BGR for InsightFace
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            try:
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                print(f"✅ Converted frame to BGR: {frame_bgr.shape}")
+            except Exception as e:
+                print(f"❌ CRITICAL: Frame conversion failed: {e}")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Frame processing failed: {str(e)}',
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress()
+                })
             
-            # Get face analysis results using the same app as matching
-            faces_insight = detection_app.get(frame_bgr)
+            # Get faces with embeddings
+            try:
+                print("🔍 Attempting face detection with InsightFace...")
+                faces = detection_app.get(frame_bgr)
+                print(f"✅ Face detection completed: {len(faces) if faces else 0} faces found")
+            except Exception as e:
+                print(f"❌ CRITICAL: Face detection failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Face detection failed: {str(e)}',
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress()
+                })
             
-            if len(faces_insight) == 0:
+            if len(faces) == 0:
                 print("❌ InsightFace couldn't extract embedding")
                 return JsonResponse({
                     'status': 'error',
@@ -546,7 +603,8 @@ def capture_pose(request):
                 })
             
             # Use the first face for embedding
-            face_insight = faces_insight[0]
+            face_insight = faces[0]
+            print(f"✅ Using first face for embedding extraction")
             real_embedding = face_insight.embedding.astype(np.float32)
             real_landmarks = face_insight.kps.astype(np.float32)
             

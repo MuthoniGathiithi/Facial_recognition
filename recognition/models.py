@@ -74,11 +74,11 @@ def get_all_embeddings():
     global _embeddings_cache, _cache_timestamp
     import time
     
-    # Use cache if it's less than 60 seconds old (shorter cache for memory)
+    # Use cache if it's less than 10 minutes old (aggressive caching for Render speed)
     current_time = time.time()
     if _embeddings_cache is not None and _cache_timestamp is not None:
-        if current_time - _cache_timestamp < 60:  # 60 second cache to save memory
-            print("⚡ Using cached embeddings for faster matching")
+        if current_time - _cache_timestamp < 600:  # 10 minute cache for maximum speed
+            print("🚀 Using cached embeddings for MAXIMUM speed on Render")
             return _embeddings_cache
     
     print("📂 Loading fresh embeddings from database...")
