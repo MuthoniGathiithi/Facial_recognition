@@ -114,29 +114,37 @@ def get_or_create_person(name):
     return Person.objects.get_or_create(name=name)[0]
 
 def get_all_embeddings():
-    """Retrieve all embeddings from the database.
+    """Retrieve all embeddings from database.
     
     Returns:
         dict: A dictionary mapping person names to lists of their face embeddings.
         Each embedding is a numpy array (512D for buffalo_l model).
     """
     embeddings_dict = {}
-    for person in Person.objects.prefetch_related('embeddings').all():
-        person_embeddings = []
-        for emb in person.embeddings.all():
-            embedding = emb.get_embedding()
-            # Ensure consistent shape - 1D array (512D for buffalo_l)
-            if len(embedding.shape) > 1:
-                embedding = embedding.reshape(-1)
-            person_embeddings.append(embedding)
-        
-        if person_embeddings:  # Only add if there are embeddings
-            embeddings_dict[person.name] = person_embeddings
     
-    print(f"Loaded embeddings for {len(embeddings_dict)} people")
+    # Load from database
+    try:
+        for person in Person.objects.prefetch_related('embeddings').all():
+            person_embeddings = []
+            for emb in person.embeddings.all():
+                embedding = emb.get_embedding()
+                # Ensure consistent shape - 1D array (512D for buffalo_l)
+                if len(embedding.shape) > 1:
+                    embedding = embedding.reshape(-1)
+                person_embeddings.append(embedding)
+            
+            if person_embeddings:  # Only add if there are embeddings
+                embeddings_dict[person.name] = person_embeddings
+        
+        print(f"📊 Loaded {len(embeddings_dict)} people from database")
+        
+    except Exception as e:
+        print(f"⚠️ Database access failed: {str(e)}")
+    
+    # Summary
+    total_people = len(embeddings_dict)
+    print(f"✅ Total available: {total_people} people")
     for name, embs in embeddings_dict.items():
         print(f"  - {name}: {len(embs)} embeddings")
-        for i, emb in enumerate(embs, 1):
-            print(f"    Embedding {i}: shape={emb.shape}, dtype={emb.dtype}")
     
     return embeddings_dict
