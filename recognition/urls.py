@@ -18,5 +18,8 @@ urlpatterns = [
     # Unknown face handling endpoints
     path('api/unknown-faces/', views_unknown.list_unknown_faces, name='list_unknown_faces'),
     path('api/enroll-unknown-face/', views_unknown.enroll_unknown_face, name='enroll_unknown_face'),
+    
+    # Health check endpoint for HF Spaces
+    path('health/', views.health_check, name='health_check'),
 ]
 
