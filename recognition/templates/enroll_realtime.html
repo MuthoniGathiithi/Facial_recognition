@@ -107,9 +107,9 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 200px;
-            height: 250px;
-            border: 3px dashed rgba(255, 255, 255, 0.7);
+            width: 280px;
+            height: 320px;
+            border: 2px dashed rgba(255, 255, 255, 0.4);
             border-radius: 50%;
         }
 
@@ -156,40 +156,7 @@
             color: #333;
         }
 
-        .pose-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            margin: 20px 0;
-        }
-
-        .pose-item {
-            text-align: center;
-            padding: 15px;
-            border-radius: 10px;
-            border: 2px solid #e1e5e9;
-            transition: all 0.3s;
-        }
-
-        .pose-item.current {
-            border-color: #8246b9;
-            background: #f0f3ff;
-        }
-
-        .pose-item.completed {
-            border-color: #28a745;
-            background: #d4edda;
-        }
-
-        .pose-icon {
-            font-size: 2em;
-            margin-bottom: 8px;
-        }
-
-        .pose-name {
-            font-weight: 600;
-            color: #333;
-        }
+        /* Pose grid styles removed - keeping only progress bar */
 
         .controls {
             display: flex;
@@ -219,18 +186,19 @@
         }
 
         .btn-secondary {
-            background: #6c757d;
-            border-color: #6c757d;
+            background: #8246b9;
+            border-color: #8246b9;
+            color: white;
         }
 
         .btn-secondary:hover {
-            background: #5a6268;
-            border-color: #545b62;
+            background: #7038a3;
+            border-color: #7038a3;
         }
 
         .btn-danger {
-            background: #dc3545;
-            border-color: #dc3545;
+            background: #8246b9;
+            border-color: #8246b9;
             color: white;
             padding: 12px 24px;
             border: none;
@@ -243,13 +211,13 @@
         }
 
         .btn-danger:hover {
-            background: #c82333;
-            border-color: #bd2130;
+            background: #7038a3;
+            border-color: #7038a3;
         }
 
         .btn-success {
-            background: #28a745;
-            border-color: #28a745;
+            background: #8246b9;
+            border-color: #8246b9;
             color: white;
             padding: 12px 24px;
             border: none;
@@ -262,8 +230,8 @@
         }
 
         .btn-success:hover {
-            background: #218838;
-            border-color: #1e7e34;
+            background: #7038a3;
+            border-color: #7038a3;
         }
 
         .btn:disabled {
@@ -276,6 +244,51 @@
             padding: 15px;
             border-radius: 8px;
             margin: 15px 0;
+            font-weight: 600;
+            min-height: 60px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1em;
+        }
+
+        .main-message {
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            font-weight: 600;
+            font-size: 1.2em;
+            text-align: center;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        .main-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+        
+        .main-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+        
+        .main-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 2px solid #bee5eb;
+        }
+        
+        .main-message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 2px solid #ffeaa7;
             font-weight: 600;
         }
 
@@ -323,9 +336,7 @@
                 height: auto;
             }
             
-            .pose-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
+            /* Pose grid media query removed */
             
             .controls {
                 flex-direction: column;
@@ -336,7 +347,7 @@
 <body>
     <div class="enrollment-container">
         <div class="header">
-            <h1>Multi-Angle Face Enrollment</h1>
+            <h1>Face Enrollment</h1>
         </div>
 
         <!-- Name Input Form -->
@@ -352,6 +363,11 @@
 
         <!-- Video Enrollment Section -->
         <div class="video-section" id="videoSection">
+            <!-- Main Message at Top -->
+            <div class="main-message info" id="mainMessage">
+                Initializing camera...
+            </div>
+            
             <div class="instruction-panel">
                 <div class="instruction-text" id="instructionText">
                     Position your face in the guide and follow the instructions
@@ -373,33 +389,10 @@
             </div>
             <div class="progress-text" id="progressText">0% Complete</div>
 
-            <!-- Pose Progress Grid -->
-            <div class="pose-grid">
-                <div class="pose-item" id="pose-front">
-                    <div class="pose-name">Front</div>
-                </div>
-                <div class="pose-item" id="pose-left">
-                    <div class="pose-name">Left</div>
-                </div>
-                <div class="pose-item" id="pose-right">
-                    <div class="pose-name">Right</div>
-                </div>
-                <div class="pose-item" id="pose-up">
-                    <div class="pose-name">Up</div>
-                </div>
-                <div class="pose-item" id="pose-down">
-                    <div class="pose-name">Down</div>
-                </div>
-            </div>
-
-            <div id="statusMessage" class="status-message status-info">
-                Initializing camera...
-            </div>
+            <!-- Status message removed - using main message at top instead -->
 
             <div class="controls">
-                <button class="btn btn-success" onclick="captureCurrentPose()" style="font-size: 12px;">DEBUG: Test Capture</button>
                 <button class="btn btn-secondary" onclick="cancelEnrollment()">Cancel</button>
-                <button class="btn btn-danger" onclick="stopEnrollment()">Stop Enrollment</button>
                 <button class="btn btn-primary" onclick="restartEnrollment()">Restart</button>
             </div>
         </div>
@@ -410,15 +403,15 @@
         let stream;
         let enrollmentActive = false;
         let currentUser = '';
+        let currentUserId = null; // Store user_id for session-free approach
         let enrollmentInterval;
 
-        // Pose mapping
-        const poseNames = ['front', 'left', 'right', 'up', 'down'];
+        // Pose mapping - only 4 poses: front, left, right, down
+        const poseNames = ['front', 'left', 'right', 'down'];
         const poseInstructions = {
             'front': 'Please look straight at the camera. Hold still...',
             'left': 'Please turn your head to YOUR LEFT (camera sees right). Hold still...',
             'right': 'Please turn your head to YOUR RIGHT (camera sees left). Hold still...',
-            'up': 'Please tilt your head slightly up. Hold still...',
             'down': 'Please tilt your head slightly down. Hold still...'
         };
         
@@ -455,6 +448,10 @@
                 if (response.ok) {
                     const data = await response.json();
                     console.log('Start enrollment response data:', data);
+                    
+                    // Store user_id for session-free approach
+                    currentUserId = data.user_id;
+                    console.log('Stored user_id:', currentUserId);
                     
                     enrollmentActive = true;
                     
@@ -507,11 +504,11 @@
         let poseStartTime = null;
 
         async function pollEnrollmentStatus() {
-            if (!enrollmentActive) return;
+            if (!enrollmentActive || !currentUserId) return;
 
             try {
-                console.log('Polling enrollment status...');
-                const response = await fetch('/enrollment_status/', {
+                console.log('Polling enrollment status for user_id:', currentUserId);
+                const response = await fetch(`/enrollment_status/?user_id=${encodeURIComponent(currentUserId)}`, {
                     method: 'GET',
                     headers: {
                         'X-CSRFToken': getCookie('csrftoken')
@@ -576,10 +573,10 @@
             document.getElementById('progressBar').style.width = progress + '%';
             document.getElementById('progressText').textContent = Math.round(progress) + '% Complete';
 
-            // Update current pose indicator
+            // Update current pose indicator - 4 poses total
             if (data.current_pose) {
                 document.getElementById('poseIndicator').textContent = 
-                    `Step ${Math.floor(progress/20) + 1} of 5: ${data.current_pose.charAt(0).toUpperCase() + data.current_pose.slice(1)} View`;
+                    `Step ${Math.floor(progress/25) + 1} of 4: ${data.current_pose.charAt(0).toUpperCase() + data.current_pose.slice(1)} View`;
                 document.getElementById('instructionText').textContent = 
                     poseInstructions[data.current_pose] || 'Follow the instructions';
             } else if (data.status === 'complete') {
@@ -587,21 +584,7 @@
                 document.getElementById('instructionText').textContent = 'All poses captured successfully';
             }
 
-            // Update pose grid
-            poseNames.forEach((pose, index) => {
-                const poseElement = document.getElementById(`pose-${pose}`);
-                poseElement.classList.remove('current', 'completed');
-                
-                if (data.completed_poses && data.completed_poses.includes(pose)) {
-                    poseElement.classList.add('completed');
-                    poseElement.innerHTML = `<div class="pose-name">${pose.charAt(0).toUpperCase() + pose.slice(1)} DONE</div>`;
-                } else if (data.current_pose === pose) {
-                    poseElement.classList.add('current');
-                    poseElement.innerHTML = `<div class="pose-name">${pose.charAt(0).toUpperCase() + pose.slice(1)} ACTIVE</div>`;
-                } else {
-                    poseElement.innerHTML = `<div class="pose-name">${pose.charAt(0).toUpperCase() + pose.slice(1)}</div>`;
-                }
-            });
+            // Pose grid removed - only progress bar remains
 
             // Update status message
             if (data.message) {
@@ -668,18 +651,26 @@
                 stream.getTracks().forEach(track => track.stop());
             }
 
-            // Send stop signal to backend
-            fetch('/stop_enrollment/', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken')
-                }
-            });
+            // Send stop signal to backend (with user_id for session-free approach)
+            if (currentUserId) {
+                fetch('/stop_enrollment/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: `user_id=${encodeURIComponent(currentUserId)}`
+                });
+            }
 
             // Reset UI - go back to name input
             document.getElementById('nameForm').style.display = 'block';
             document.getElementById('videoSection').style.display = 'none';
             document.getElementById('userName').value = ''; // Clear name field
+            
+            // Clear stored user_id
+            currentUserId = null;
+            currentUser = '';
             
             showStatus('Enrollment cancelled. Enter your name to start again.', 'info');
         }
@@ -730,7 +721,7 @@
                         'Content-Type': 'application/x-www-form-urlencoded',
                         'X-CSRFToken': getCookie('csrftoken')
                     },
-                    body: `frame_data=${encodeURIComponent(frameData)}`
+                    body: `frame_data=${encodeURIComponent(frameData)}&user_id=${encodeURIComponent(currentUserId)}`
                 });
 
                 console.log('Capture response status:', response.status);
@@ -746,6 +737,10 @@
                             console.log('Debug position:', data.debug_position);
                         }
                         showStatus(message, 'info');
+                    } else if (data.status === 'hold_pose') {
+                        // Show countdown message for pose holding
+                        showStatus(data.message, 'warning');
+                        // Continue checking - don't stop the capture loop
                     } else {
                         // Successful capture
                         showStatus(data.message, 'success');
@@ -773,10 +768,62 @@
             console.log('startEnrollment function exists:', typeof startEnrollment);
         };
 
+        let messageTimeout = null;
+        let lastMessage = '';
+        let lastMessageTime = 0;
+        
         function showStatus(message, type) {
-            const statusElement = document.getElementById('statusMessage');
-            statusElement.textContent = message;
-            statusElement.className = `status-message status-${type}`;
+            const currentTime = Date.now();
+            
+            // Prevent rapid message changes - minimum 1 second between different messages
+            if (message === lastMessage || (currentTime - lastMessageTime < 1000 && type === 'info')) {
+                return;
+            }
+            
+            // Clear any existing timeout
+            if (messageTimeout) {
+                clearTimeout(messageTimeout);
+            }
+            
+            const messageElement = document.getElementById('mainMessage');
+            
+            // Customize message for common occlusion issues
+            let displayMessage = message;
+            let messageType = type;
+            
+            if (type === 'error' || message.includes('occluding') || message.includes('sunglasses') || message.includes('mask') || message.includes('lighting') || message.includes('shadow')) {
+                messageType = 'error';
+                if (message.includes('sunglasses') || message.includes('glasses')) {
+                    displayMessage = 'Please remove sunglasses or glasses that may be blocking your eyes';
+                } else if (message.includes('mask') || message.includes('mouth') || message.includes('nose')) {
+                    displayMessage = 'Please remove any face mask or covering from your mouth and nose area';
+                } else if (message.includes('hand') || message.includes('object')) {
+                    displayMessage = 'Please remove your hands or any objects from near your face';
+                } else if (message.includes('shadow') || message.includes('lighting') || message.includes('dark')) {
+                    displayMessage = 'Please ensure good lighting - avoid shadows on your face';
+                } else if (message.includes('hair') || message.includes('eye')) {
+                    displayMessage = 'Please move hair away from your eyes and face';
+                } else if (message.includes('occluding') || message.includes('detected')) {
+                    displayMessage = 'Please remove anything occluding your face and ensure clear visibility';
+                }
+            }
+            
+            // Update message immediately
+            messageElement.textContent = displayMessage;
+            messageElement.className = `main-message ${messageType}`;
+            lastMessage = message;
+            lastMessageTime = currentTime;
+            
+            // For error messages, keep them visible longer
+            if (messageType === 'error') {
+                messageTimeout = setTimeout(() => {
+                    // Only clear if no new message has been set
+                    if (messageElement.textContent === displayMessage) {
+                        messageElement.textContent = 'Position your face in the camera and follow instructions';
+                        messageElement.className = 'main-message info';
+                    }
+                }, 4000);
+            }
         }
 
         // Utility function to get CSRF token
