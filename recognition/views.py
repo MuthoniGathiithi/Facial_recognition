@@ -257,7 +257,7 @@ def enrollment_status(request):
         
         # If enrollment is complete, cleanup (database save handled in EnrollmentState)
         if result.get('status') == 'complete':
-            result['message'] = 'Enrollment completed and saved successfully to database'
+            result['message'] = 'Enrollment completed and saved successfully!'
             
             # Clean up
             if user_id in active_enrollments:
@@ -782,7 +782,6 @@ def matching_view(request):
         thresh_pct = 50.0
     
     threshold = thresh_pct / 100.0
-    temp_path = None
     
     if request.method == 'POST':
         try:
@@ -794,39 +793,14 @@ def matching_view(request):
                     if not photo.content_type.startswith('image/'):
                         raise ValueError("Uploaded file is not an image")
                     
-                    # Hybrid approach: Try file-based first (local dev), fallback to memory-based (Hugging Face)
-                    temp_path = None
-                    use_memory_processing = False
+                    # Process image in memory for Render deployment
+                    photo.seek(0)
+                    image_data = b''
+                    for chunk in photo.chunks():
+                        image_data += chunk
                     
-                    try:
-                        # Try to create temp file (works in local development)
-                        temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
-                        os.makedirs(temp_dir, exist_ok=True)
-                        temp_filename = f"match_{uuid.uuid4().hex}_{photo.name}"
-                        temp_path = os.path.join(temp_dir, temp_filename)
-                        
-                        # Test write access
-                        with open(temp_path, 'wb+') as f:
-                            for chunk in photo.chunks():
-                                f.write(chunk)
-                        
-                        print(f"✅ Local development: Using file-based processing ({temp_path})")
-                        result = match_face(temp_path, threshold=threshold)
-                        
-                    except (OSError, PermissionError) as fs_error:
-                        # Filesystem is read-only (Hugging Face Spaces)
-                        print(f"⚠️ Filesystem write failed: {fs_error}")
-                        print("🔄 Switching to memory-based processing (Hugging Face mode)")
-                        use_memory_processing = True
-                        
-                        # Reset file pointer and read into memory
-                        photo.seek(0)
-                        image_data = b''
-                        for chunk in photo.chunks():
-                            image_data += chunk
-                        
-                        print(f"📱 Hugging Face: Using memory-based processing ({len(image_data)} bytes)")
-                        result = match_face(image_data, threshold=threshold)
+                    print(f"📱 Processing image in memory ({len(image_data)} bytes)")
+                    result = match_face(image_data, threshold=threshold)
                     
                     print("Match face function completed successfully")
                     
@@ -858,7 +832,7 @@ def matching_view(request):
                 # Write debug output (if filesystem is writable)
                 try:
                     debug_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
-                    # Check if we can write to filesystem (Hugging Face compatibility)
+                    # Check if we can write to filesystem for debugging
                     can_write = True
                     try:
                         os.makedirs(debug_dir, exist_ok=True)
@@ -921,33 +895,9 @@ def matching_view(request):
             print(f"Full error traceback:")
             import traceback
             traceback.print_exc()
-            try:
-                debug_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
-                # Check if we can write to filesystem (Hugging Face compatibility)
-                can_write = True
-                try:
-                    os.makedirs(debug_dir, exist_ok=True)
-                    # Test write access
-                    test_file = os.path.join(debug_dir, 'test_write.tmp')
-                    with open(test_file, 'w') as f:
-                        f.write('test')
-                    os.remove(test_file)
-                except (OSError, PermissionError):
-                    can_write = False
-                    print("⚠️ Filesystem is read-only, skipping error debug file saving")
-                
-                if can_write:
-                    debug_path = os.path.join(debug_dir, 'last_match_error.json')
-                    with open(debug_path, 'w') as df:
-                        import json, traceback
-                        error_data = {
-                            'error': str(e),
-                            'traceback': traceback.format_exc(),
-                            'request_data': str(request.POST) if request.method == 'POST' else 'GET request'
-                        }
-                        json.dump(error_data, df, indent=2)
-            except Exception as debug_error:
-                print(f"Error writing error debug file: {str(debug_error)}")
+            # Log error details for debugging
+            import traceback
+            print(f"Full error traceback: {traceback.format_exc()}")
             
             if is_ajax:
                 response_data['message'] = error_msg
@@ -955,13 +905,8 @@ def matching_view(request):
             return render(request, 'matching.html', {'result': error_msg})
         
         finally:
-            # Clean up temporary file if it was created (local development)
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                    print(f"🧹 Cleaned up temp file: {temp_path}")
-                except Exception as e:
-                    print(f"⚠️ Error cleaning up temp file {temp_path}: {str(e)}")
+            # No cleanup needed for memory-based processing
+            pass
     
     # Handle GET request (show the form)
     if is_ajax:
