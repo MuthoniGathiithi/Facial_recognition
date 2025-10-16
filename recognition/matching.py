@@ -17,35 +17,52 @@ print(f"\n{'='*60}")
 print(f"🔧 MATCHING MODULE LOADED")
 print(f"{'='*60}")
 print(f"BASE_DIR: {settings.BASE_DIR}")
-print(f"MEDIA_ROOT: {settings.MEDIA_ROOT}")
 print(f"{'='*60}\n")
 
 
 def get_face_embeddings(image_rgb):
-    """Extract embeddings for faces in an RGB image using same method as enrollment"""
+    """Extract embeddings for faces in an RGB image with speed optimization"""
     try:
+        # Resize image for faster processing if it's too large
+        h, w = image_rgb.shape[:2]
+        max_size = 800  # Maximum dimension for faster processing
+        if max(h, w) > max_size:
+            scale = max_size / max(h, w)
+            new_h, new_w = int(h * scale), int(w * scale)
+            image_rgb = cv2.resize(image_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            print(f"⚡ Resized image from {w}x{h} to {new_w}x{new_h} for faster processing")
+        
         # Use the same detection app as enrollment for consistency
         from .detection import get_face_analysis_app
-        print("🔄 Loading InsightFace model for matching...")
-        detection_app = get_face_analysis_app()
+        app = get_face_analysis_app()
+        
+        if app is None:
+            print("❌ Failed to get face analysis app")
+            return []
         
         # Convert RGB to BGR for InsightFace
         image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
         
-        # Use the same app.get() method as enrollment
-        faces = detection_app.get(image_bgr)
+        # Get faces with embeddings
+        faces = app.get(image_bgr)
         
         if not faces:
-            print("❌ No faces detected")
+            print("❌ No faces detected by InsightFace")
             return []
         
-        print(f"✅ Detected {len(faces)} face(s).")
+        print(f"✅ InsightFace detected {len(faces)} face(s)")
         
+        # Extract embeddings
         embeddings = []
-        for face in faces:
-            embedding = face.embedding.astype(np.float32)
-            embeddings.append(embedding)
-            print(f"✅ MATCHING extracted embedding: shape={embedding.shape}, norm={np.linalg.norm(embedding):.3f}")
+        for i, face in enumerate(faces):
+            if hasattr(face, 'embedding') and face.embedding is not None:
+                embedding = face.embedding
+                # Normalize the embedding
+                embedding = embedding / np.linalg.norm(embedding)
+                embeddings.append(embedding)
+                print(f"  Face {i+1}: embedding shape {embedding.shape}")
+            else:
+                print(f"  Face {i+1}: no embedding available")
         
         return embeddings
         
@@ -54,7 +71,6 @@ def get_face_embeddings(image_rgb):
         import traceback
         traceback.print_exc()
         return []
-
 
 
 def load_enrolled_embeddings():
@@ -141,39 +157,9 @@ def match_face(uploaded_photo_input, threshold=0.5):
         
         print(f"✅ Found {len(uploaded_embeddings)} face(s)")
 
-        # Save normalized crops to temp_uploads for debugging inspection (if filesystem is writable)
-        try:
-            temp_dir = os.path.join(settings.BASE_DIR, 'temp_uploads')
-            # Check if we can write to filesystem for debugging
-            can_write = True
-            try:
-                os.makedirs(temp_dir, exist_ok=True)
-                # Test write access
-                test_file = os.path.join(temp_dir, 'test_write.tmp')
-                with open(test_file, 'w') as f:
-                    f.write('test')
-                os.remove(test_file)
-            except (OSError, PermissionError):
-                can_write = False
-                print("⚠️ Filesystem is read-only, skipping debug file saving")
-            
-            if can_write:
-                # We need to regenerate normalized faces from the image so we save the
-                # actual cropped/normalized images used for embedding extraction.
-                # Use the detection + normalization pipeline to get the face crops.
-                faces = multi_scale_detect(image_rgb)
-                if faces:
-                    face_list, landmarks_list = crop_detected_faces(faces, image_rgb)
-                    normalized_faces = normalize_entire_list(face_list, landmarks_list)
-                    for idx, face in enumerate(normalized_faces, start=1):
-                        save_path = os.path.join(temp_dir, f"debug_match_face_{idx}.png")
-                        # face is RGB, convert to BGR for cv2
-                        face_bgr = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
-                        cv2.imwrite(save_path, face_bgr)
-                        print(f"💾 Saved normalized crop: {save_path}")
-        except Exception as e:
-            print(f"⚠️ Could not save debug crops: {e}")
-        
+        # Skip debug file operations for faster matching
+        print("⚡ Optimized for speed - skipping debug operations")
+
         # Load enrolled faces
         print("📂 Loading enrolled faces...")
         enrolled_embeddings = load_enrolled_embeddings()

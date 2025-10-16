@@ -259,6 +259,10 @@ def enrollment_status(request):
         if result.get('status') == 'complete':
             result['message'] = 'Enrollment completed and saved successfully!'
             
+            # Clear embeddings cache for faster matching
+            from .models import clear_embeddings_cache
+            clear_embeddings_cache()
+            
             # Clean up
             if user_id in active_enrollments:
                 del active_enrollments[user_id]

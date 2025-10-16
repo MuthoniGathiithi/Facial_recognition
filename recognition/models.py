@@ -60,13 +60,28 @@ def get_or_create_person(name):
     """Helper function to get or create a person."""
     return Person.objects.get_or_create(name=name)[0]
 
+# Simple cache for embeddings to improve matching speed
+_embeddings_cache = None
+_cache_timestamp = None
+
 def get_all_embeddings():
-    """Retrieve all embeddings from database.
+    """Retrieve all embeddings from database with caching for speed.
     
     Returns:
         dict: A dictionary mapping person names to lists of their face embeddings.
         Each embedding is a numpy array (512D for buffalo_l model).
     """
+    global _embeddings_cache, _cache_timestamp
+    import time
+    
+    # Use cache if it's less than 30 seconds old
+    current_time = time.time()
+    if _embeddings_cache is not None and _cache_timestamp is not None:
+        if current_time - _cache_timestamp < 30:  # 30 second cache
+            print("⚡ Using cached embeddings for faster matching")
+            return _embeddings_cache
+    
+    print("📂 Loading fresh embeddings from database...")
     embeddings_dict = {}
     
     # Load from database
@@ -88,6 +103,10 @@ def get_all_embeddings():
     except Exception as e:
         print(f"⚠️ Database access failed: {str(e)}")
     
+    # Update cache
+    _embeddings_cache = embeddings_dict
+    _cache_timestamp = current_time
+    
     # Summary
     total_people = len(embeddings_dict)
     print(f"✅ Total available: {total_people} people")
@@ -95,3 +114,10 @@ def get_all_embeddings():
         print(f"  - {name}: {len(embs)} embeddings")
     
     return embeddings_dict
+
+def clear_embeddings_cache():
+    """Clear the embeddings cache to force fresh loading on next request."""
+    global _embeddings_cache, _cache_timestamp
+    _embeddings_cache = None
+    _cache_timestamp = None
+    print("🗑️ Embeddings cache cleared")

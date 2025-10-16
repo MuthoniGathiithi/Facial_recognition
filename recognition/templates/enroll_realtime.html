@@ -465,10 +465,10 @@
                     // Update UI with initial data
                     updateEnrollmentUI(data);
                     
-                    // Start polling for enrollment status immediately
-                    enrollmentInterval = setInterval(pollEnrollmentStatus, 1000);
+                    // Start polling for enrollment status with optimized frequency
+                    enrollmentInterval = setInterval(pollEnrollmentStatus, 2000); // Reduced from 1000ms to 2000ms
                     // Also poll once immediately to get initial status
-                    setTimeout(pollEnrollmentStatus, 500);
+                    setTimeout(pollEnrollmentStatus, 1000);
                     
                     showStatus(data.message || 'Enrollment started! Position yourself in front of the camera.', 'success');
                 } else {
@@ -550,7 +550,7 @@
                                     await captureCurrentPose();
                                     autoCaptureTimeout = null; // Reset for next check
                                 }
-                            }, 500); // Check every 500ms
+                            }, 1500); // Check every 1.5 seconds (reduced frequency)
                         }
                     }
                     
