@@ -23,14 +23,14 @@ print(f"{'='*60}\n")
 def get_face_embeddings(image_rgb):
     """Extract embeddings for faces in an RGB image with speed optimization"""
     try:
-        # Resize image for MUCH faster processing if it's too large
+        # Resize image aggressively to save memory (Render has 512MB limit)
         h, w = image_rgb.shape[:2]
-        max_size = 512  # Smaller maximum dimension for MUCH faster processing
+        max_size = 320  # Much smaller for memory efficiency on Render
         if max(h, w) > max_size:
             scale = max_size / max(h, w)
             new_h, new_w = int(h * scale), int(w * scale)
             image_rgb = cv2.resize(image_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"⚡ Aggressively resized image from {w}x{h} to {new_w}x{new_h} for MUCH faster processing")
+            print(f"⚡ Memory-optimized resize from {w}x{h} to {new_w}x{new_h} for Render 512MB limit")
         
         # Use the same detection app as enrollment for consistency
         from .detection import get_face_analysis_app
@@ -52,10 +52,10 @@ def get_face_embeddings(image_rgb):
         
         print(f"✅ InsightFace detected {len(faces)} face(s)")
         
-        # Limit to first 3 faces for speed (most images have 1-2 faces anyway)
-        if len(faces) > 3:
-            faces = faces[:3]
-            print(f"⚡ Limited to first 3 faces for faster processing")
+        # Limit to first 2 faces to save memory (Render 512MB limit)
+        if len(faces) > 2:
+            faces = faces[:2]
+            print(f"⚡ Limited to first 2 faces to save memory on Render")
         
         # Extract embeddings
         embeddings = []
@@ -76,6 +76,11 @@ def get_face_embeddings(image_rgb):
         import traceback
         traceback.print_exc()
         return []
+    finally:
+        # Clean up memory
+        import gc
+        gc.collect()
+        print("🧹 Memory cleanup completed")
 
 
 def load_enrolled_embeddings():
@@ -232,3 +237,8 @@ def match_face(uploaded_photo_input, threshold=0.5):
         traceback.print_exc()
         print("="*60 + "\n")
         return f"Error: {str(e)}", 0, []
+    finally:
+        # Clean up memory after matching
+        import gc
+        gc.collect()
+        print("🧹 Memory cleanup after matching completed")

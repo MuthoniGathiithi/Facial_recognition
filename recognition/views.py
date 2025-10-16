@@ -765,6 +765,13 @@ def enroll(request):
 
 
 def matching_view(request):
+    # Memory monitoring for Render debugging
+    import psutil
+    import os
+    process = psutil.Process(os.getpid())
+    memory_mb = process.memory_info().rss / 1024 / 1024
+    print(f"🔍 Memory usage at start of matching: {memory_mb:.1f} MB")
+    
     # Check if this is an AJAX request
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     
