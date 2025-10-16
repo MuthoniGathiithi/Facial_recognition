@@ -2,8 +2,8 @@ services:
   - type: web
     name: identiface
     env: python
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput"
-    startCommand: "gunicorn identiface.wsgi:application"
+    buildCommand: "pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput"
+    startCommand: "gunicorn identiface.wsgi:application --bind 0.0.0.0:$PORT"
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.8
@@ -11,10 +11,15 @@ services:
         value: identiface.settings
       - key: PYTHONUNBUFFERED
         value: true
-      - key: N_PLUS_ONE_TRACKER_RAISE
-        value: "false"
+      - key: DEBUG
+        value: false
     plan: free
     disk:
       name: identiface-data
       mountPath: /opt/render/project/src/media
       sizeGB: 1
+
+databases:
+  - name: identiface-db
+    databaseName: identiface
+    user: identiface
