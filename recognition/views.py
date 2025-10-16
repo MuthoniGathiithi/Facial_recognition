@@ -380,15 +380,8 @@ def capture_pose(request):
                 'message': 'All poses captured! Enrollment complete!'
             })
         
-        # REAL POSE VALIDATION - Check actual head position
-        frame_data = request.POST.get('frame_data')
-        if not frame_data:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'No camera frame provided. Please ensure camera is working.',
-                'current_pose': current_pose['name'],
-                'progress': enrollment_state.get_progress()
-            })
+        # Initialize face detection variables
+        x, y, w, h = 0, 0, 0, 0
         
         try:
             import cv2
@@ -573,7 +566,6 @@ def capture_pose(request):
         print("📝 Using OpenCV face detection data for pose capture")
         
         # Create a simple embedding placeholder (will be replaced with real embedding later)
-        import numpy as np
         simple_embedding = np.random.rand(512).astype(np.float32)  # 512D placeholder
         simple_embedding = simple_embedding / np.linalg.norm(simple_embedding)  # Normalize
         
