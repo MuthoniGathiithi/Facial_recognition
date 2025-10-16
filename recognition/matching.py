@@ -125,7 +125,7 @@ def load_enrolled_embeddings():
     return enrolled
 
 
-def match_face(uploaded_photo_input, threshold=0.6):
+def match_face(uploaded_photo_input, threshold=0.4):
     """
     Compare uploaded face (base64, file path, or bytes) with enrolled embeddings.
     
