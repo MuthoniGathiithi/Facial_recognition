@@ -508,13 +508,13 @@ def capture_pose(request):
                     print(f"❌ Right pose invalid: {error_msg}")
             
             elif pose_name == 'down':
-                # Down: extremely forgiving - just a very tiny tilt down is enough
-                print(f"Down check: V={vertical_offset:.3f} < -0.05? (very tiny tilt down)")
-                if vertical_offset < -0.05:  # Just 5% movement is enough - extremely forgiving
+                # Down: EXTREMELY forgiving - almost any position counts as down
+                print(f"Down check: V={vertical_offset:.3f} < 0.05? (extremely forgiving - almost any position)")
+                if vertical_offset < 0.05:  # Even slight upward is OK - EXTREMELY forgiving
                     pose_valid = True
                     print("✅ Down pose valid!")
                 else:
-                    error_msg = f'Please tilt your head slightly DOWN'
+                    error_msg = f'Please look down slightly (just lower your eyes a bit)'
                     print(f"❌ Down pose invalid: {error_msg}")
             
             elif pose_name == 'up':
@@ -643,12 +643,22 @@ def capture_pose(request):
             # Start background loading (non-blocking)
             threading.Thread(target=load_insightface_background, daemon=True).start()
         
+        # Create success message
+        if enrollment_state.is_complete:
+            success_message = "🎉 All poses captured! Enrollment complete!"
+        else:
+            next_pose = enrollment_state.get_current_pose()
+            if next_pose:
+                success_message = f"✅ {current_pose['name'].title()} pose captured! Next: {next_pose['name']}"
+            else:
+                success_message = f"✅ {current_pose['name'].title()} pose captured successfully!"
+        
         return JsonResponse({
             'status': 'captured' if not enrollment_state.is_complete else 'complete',
             'progress': enrollment_state.get_progress(),
             'current_pose': enrollment_state.get_current_pose()['name'] if enrollment_state.get_current_pose() else None,
             'completed_poses': enrollment_state.get_captured_poses(),
-            'message': f'{current_pose["name"].title()} pose captured successfully!'
+            'message': success_message
         })
         
     except Exception as e:
