@@ -3,13 +3,24 @@ import cv2
 import numpy as np
 from .normalization import normalize_entire_list
 
-app = FaceAnalysis(providers=['CPUExecutionProvider'])
-app.prepare(ctx_id=0, det_size=(640, 640))
+# Lazy loading - initialize model only when needed
+app = None
+
+def get_face_analysis_app():
+    """Lazy load the FaceAnalysis model - loads only on first use"""
+    global app
+    if app is None:
+        print("🔄 Loading InsightFace model for feature extraction (first time only)...")
+        app = FaceAnalysis(providers=['CPUExecutionProvider'])
+        app.prepare(ctx_id=0, det_size=(640, 640))
+        print("✅ InsightFace model loaded for feature extraction")
+    return app
 
 def extract_features(normalized_face):
     """Extract features from a normalized face using ArcFace"""
     if normalized_face is not None:
-        recognition_model = app.models['recognition']
+        face_app = get_face_analysis_app()
+        recognition_model = face_app.models['recognition']
         face_bgr = cv2.cvtColor(normalized_face, cv2.COLOR_RGB2BGR)
         embedding = recognition_model.get_feat(face_bgr)
         # Reshape to (1, 512) for consistency
