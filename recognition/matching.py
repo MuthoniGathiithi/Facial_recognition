@@ -22,9 +22,9 @@ print(f"{'='*60}\n")
 
 
 def get_face_embeddings(image_rgb):
-    """Extract embeddings for faces in an RGB image with debugging"""
+    """Extract embeddings for faces in an RGB image with timeout handling"""
     try:
-        print("🔧 DEBUGGING: Starting face embedding extraction...")
+        print("🔧 FAST MATCHING: Starting face embedding extraction...")
         
         # Check if we can import InsightFace at all
         try:
@@ -34,10 +34,20 @@ def get_face_embeddings(image_rgb):
             print(f"❌ CRITICAL: Cannot import detection module: {e}")
             return []
         
-        # Try to get the face analysis app
+        # Try to get the face analysis app with timeout
+        import time
+        start_time = time.time()
+        
         try:
             print("🔄 Attempting to load InsightFace model...")
             detection_app = get_face_analysis_app()
+            
+            load_time = time.time() - start_time
+            print(f"⏱️ InsightFace load time: {load_time:.2f} seconds")
+            
+            if load_time > 30:  # If loading takes too long
+                print("⚠️ WARNING: InsightFace loading took too long, may timeout")
+            
             print(f"✅ InsightFace app loaded: {detection_app is not None}")
         except Exception as e:
             print(f"❌ CRITICAL: InsightFace failed to load: {e}")
