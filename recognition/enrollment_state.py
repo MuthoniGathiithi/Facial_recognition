@@ -35,21 +35,21 @@ class EnrollmentState:
         Args:
             user_id: Unique identifier for the user
             name: User's name
-            output_dir: Directory to store enrollment data
+            output_dir: Directory to store enrollment data (for database-only mode, this is ignored)
         """
         self.user_id = user_id
         self.name = name
-        self.output_dir = Path(output_dir)
-        self.user_dir = self.output_dir / str(user_id)
         
-        # Create directories if they don't exist
-        self.user_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Enrollment state
+        # Initialize state
         self.current_pose_index = 0
         self.captured_poses = {}
         self.embeddings = []
         self.is_complete = False
+        
+        # Pose hold timer to prevent false captures
+        self.pose_hold_start_time = None
+        self.pose_hold_duration = 0.8  # Require 0.8 seconds of stable pose (very user-friendly)
+        self.last_valid_pose = None
         
         # Metadata
         self.start_time = datetime.now()
@@ -71,6 +71,44 @@ class EnrollmentState:
         if self.current_pose_index >= len(self.REQUIRED_POSES):
             return None
         return self.REQUIRED_POSES[self.current_pose_index]
+    
+    def check_pose_hold_timer(self, pose_name):
+        """
+        Check if the current pose has been held long enough for capture.
+        
+        Args:
+            pose_name: Name of the currently detected pose
+            
+        Returns:
+            tuple: (is_ready_for_capture, remaining_time)
+        """
+        import time
+        current_time = time.time()
+        
+        # If this is a new pose or different from last valid pose
+        if pose_name != self.last_valid_pose:
+            self.pose_hold_start_time = current_time
+            self.last_valid_pose = pose_name
+            return False, self.pose_hold_duration
+        
+        # If we don't have a start time, set it now
+        if self.pose_hold_start_time is None:
+            self.pose_hold_start_time = current_time
+            return False, self.pose_hold_duration
+        
+        # Calculate how long the pose has been held
+        hold_time = current_time - self.pose_hold_start_time
+        remaining_time = max(0, self.pose_hold_duration - hold_time)
+        
+        # Check if pose has been held long enough
+        is_ready = hold_time >= self.pose_hold_duration
+        
+        return is_ready, remaining_time
+    
+    def reset_pose_timer(self):
+        """Reset the pose hold timer (called when pose becomes invalid)"""
+        self.pose_hold_start_time = None
+        self.last_valid_pose = None
     
     def capture_pose(self, frame, face_bbox, landmarks, embedding, quality_metrics):
         """
@@ -103,17 +141,6 @@ class EnrollmentState:
         }
         
         print(f"🔍 CAPTURE_POSE DEBUG: Storing {pose_name} embedding shape: {embedding.shape}")
-        
-        # Save frame image
-        frame_filename = f"{pose_name}_frame.jpg"
-        frame_path = self.user_dir / frame_filename
-        
-        # Convert RGB to BGR for OpenCV saving
-        import cv2
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(str(frame_path), frame_bgr)
-        
-        pose_data['frame_path'] = str(frame_path)
         
         # Store in captured poses
         self.captured_poses[pose_name] = pose_data
@@ -160,32 +187,17 @@ class EnrollmentState:
     
     def _save_enrollment_data(self):
         """
-        Save enrollment data to files AND database.
+        Save enrollment data to database only.
         """
-        # Save metadata to files
-        metadata_path = self.user_dir / 'enrollment_metadata.json'
+        # Update metadata
         self.metadata['completion_time'] = datetime.now().isoformat()
         self.metadata['total_duration'] = (datetime.now() - self.start_time).total_seconds()
         
-        with open(metadata_path, 'w') as f:
-            json.dump(self.metadata, f, indent=2)
-        
-        # Save pose data to files
-        poses_path = self.user_dir / 'poses_data.json'
-        with open(poses_path, 'w') as f:
-            json.dump(self.captured_poses, f, indent=2)
-        
-        # Save embeddings as numpy array to files
-        if self.embeddings:
-            embeddings_array = np.array(self.embeddings)
-            embeddings_path = self.user_dir / 'embeddings.npy'
-            np.save(embeddings_path, embeddings_array)
-        
-        # SAVE TO DATABASE - THIS WAS MISSING!
+        # SAVE TO DATABASE
         try:
             from .models import Person, FaceEmbedding
             
-            # Create or get person (using name as unique identifier)
+            # Create or get person
             person, created = Person.objects.get_or_create(name=self.name)
             print(f"Person {'created' if created else 'found'}: {person.name}")
             
@@ -199,46 +211,27 @@ class EnrollmentState:
             for pose_name, pose_data in self.captured_poses.items():
                 embedding_array = np.array(pose_data['embedding'])
                 
-                print(f"🔍 DEBUG {pose_name}: Original embedding shape: {embedding_array.shape}")
-                print(f"🔍 DEBUG {pose_name}: Original embedding dtype: {embedding_array.dtype}")
-                print(f"🔍 DEBUG {pose_name}: First 5 values: {embedding_array[:5]}")
-                
                 # Ensure embedding is properly formatted
                 if len(embedding_array.shape) > 1:
                     embedding_array = embedding_array.reshape(-1)
-                    print(f"🔍 DEBUG {pose_name}: Reshaped to: {embedding_array.shape}")
-                
-                # Convert to bytes and check size
-                embedding_bytes = embedding_array.tobytes()
-                print(f"🔍 DEBUG {pose_name}: Bytes length: {len(embedding_bytes)} (should be {embedding_array.shape[0] * 4})")
                 
                 # Create FaceEmbedding record
-                face_embedding = FaceEmbedding.objects.create(
+                FaceEmbedding.objects.create(
                     person=person,
                     pose=pose_name,
-                    embedding=embedding_bytes,
-                    image_path=pose_data.get('frame_path', ''),
+                    embedding=embedding_array.tobytes(),
+                    image_path='',  # No file storage for Render deployment
                     quality_metrics=pose_data.get('quality_metrics', {})
                 )
-                
-                # Verify what was actually stored
-                stored_embedding = face_embedding.get_embedding()
-                print(f"✅ Saved {pose_name} embedding: ID={face_embedding.id}")
-                print(f"✅ Stored shape: {stored_embedding.shape} (should match original)")
-                
-                if stored_embedding.shape[0] != embedding_array.shape[0]:
-                    print(f"❌ CORRUPTION DETECTED! Original: {embedding_array.shape[0]}D, Stored: {stored_embedding.shape[0]}D")
             
-            print(f"🎉 All {len(self.captured_poses)} embeddings saved to database for {self.name}")
+            print(f"✅ All {len(self.captured_poses)} embeddings saved to database for {self.name}")
             return True
-            
+                    
         except Exception as e:
-            print(f"❌ Error saving to database: {str(e)}")
+            print(f"❌ Error saving enrollment: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
-        
-        print(f"Enrollment data saved for user {self.user_id} ({self.name})")
     
     def get_captured_poses(self):
         """
