@@ -74,10 +74,10 @@ def get_all_embeddings():
     global _embeddings_cache, _cache_timestamp
     import time
     
-    # Use cache if it's less than 30 seconds old
+    # Use cache if it's less than 5 minutes old (much longer cache)
     current_time = time.time()
     if _embeddings_cache is not None and _cache_timestamp is not None:
-        if current_time - _cache_timestamp < 30:  # 30 second cache
+        if current_time - _cache_timestamp < 300:  # 5 minute cache for speed
             print("⚡ Using cached embeddings for faster matching")
             return _embeddings_cache
     

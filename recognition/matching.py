@@ -23,14 +23,14 @@ print(f"{'='*60}\n")
 def get_face_embeddings(image_rgb):
     """Extract embeddings for faces in an RGB image with speed optimization"""
     try:
-        # Resize image for faster processing if it's too large
+        # Resize image for MUCH faster processing if it's too large
         h, w = image_rgb.shape[:2]
-        max_size = 800  # Maximum dimension for faster processing
+        max_size = 512  # Smaller maximum dimension for MUCH faster processing
         if max(h, w) > max_size:
             scale = max_size / max(h, w)
             new_h, new_w = int(h * scale), int(w * scale)
             image_rgb = cv2.resize(image_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"⚡ Resized image from {w}x{h} to {new_w}x{new_h} for faster processing")
+            print(f"⚡ Aggressively resized image from {w}x{h} to {new_w}x{new_h} for MUCH faster processing")
         
         # Use the same detection app as enrollment for consistency
         from .detection import get_face_analysis_app
@@ -51,6 +51,11 @@ def get_face_embeddings(image_rgb):
             return []
         
         print(f"✅ InsightFace detected {len(faces)} face(s)")
+        
+        # Limit to first 3 faces for speed (most images have 1-2 faces anyway)
+        if len(faces) > 3:
+            faces = faces[:3]
+            print(f"⚡ Limited to first 3 faces for faster processing")
         
         # Extract embeddings
         embeddings = []

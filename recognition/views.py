@@ -416,33 +416,33 @@ def capture_pose(request):
             print(f"Required pose: {pose_name}")
             
             if pose_name == 'front':
-                # Front: face should be reasonably centered (very forgiving)
-                print(f"Front check: |H|={abs(horizontal_offset):.3f} < 0.25? |V|={abs(vertical_offset):.3f} < 0.25?")
-                if abs(horizontal_offset) < 0.25 and abs(vertical_offset) < 0.25:
+                # Front: face should be reasonably centered (EXTREMELY forgiving)
+                print(f"Front check: |H|={abs(horizontal_offset):.3f} < 0.4? |V|={abs(vertical_offset):.3f} < 0.4?")
+                if abs(horizontal_offset) < 0.4 and abs(vertical_offset) < 0.4:
                     pose_valid = True
                     print("✅ Front pose valid!")
                 else:
-                    error_msg = f'Please position your face in the guide area'
+                    error_msg = f"Please center your face in the camera (H:{horizontal_offset:.2f}, V:{vertical_offset:.2f})"
                     print(f"❌ Front pose invalid: {error_msg}")
             
             elif pose_name == 'left':
-                # Left: just a slight turn left is enough (very user-friendly)
-                print(f"Left check: H={horizontal_offset:.3f} > 0.12? (slight left turn)")
-                if horizontal_offset > 0.12:  # Just 12% movement is enough
+                # Left: Require actual head turn but not extreme (comfortable turn)
+                print(f"Left check: H={horizontal_offset:.3f} > 0.15? (clear left turn)")
+                if horizontal_offset > 0.15:  # 15% movement - clear turn but not tiring
                     pose_valid = True
                     print("✅ Left pose valid!")
                 else:
-                    error_msg = f'Please turn your head slightly to YOUR LEFT'
+                    error_msg = f"Please turn your head more to YOUR LEFT - show your left profile (H:{horizontal_offset:.2f})"
                     print(f"❌ Left pose invalid: {error_msg}")
             
             elif pose_name == 'right':
-                # Right: just a slight turn right is enough (very user-friendly)
-                print(f"Right check: H={horizontal_offset:.3f} < -0.12? (slight right turn)")
-                if horizontal_offset < -0.12:  # Just 12% movement is enough
+                # Right: Require actual head turn but not extreme (comfortable turn)
+                print(f"Right check: H={horizontal_offset:.3f} < -0.15? (clear right turn)")
+                if horizontal_offset < -0.15:  # 15% movement - clear turn but not tiring
                     pose_valid = True
                     print("✅ Right pose valid!")
                 else:
-                    error_msg = f'Please turn your head slightly to YOUR RIGHT'
+                    error_msg = f"Please turn your head more to YOUR RIGHT - show your right profile (H:{horizontal_offset:.2f})"
                     print(f"❌ Right pose invalid: {error_msg}")
             
             elif pose_name == 'down':
@@ -481,7 +481,7 @@ def capture_pose(request):
                     'debug_position': {'h_offset': horizontal_offset, 'v_offset': vertical_offset}
                 })
             
-            # Check pose hold timer - require user to hold pose for 0.8 seconds
+            # Check pose hold timer - require user to hold pose for 0.3 seconds (much faster)
             is_ready_for_capture, remaining_time = enrollment_state.check_pose_hold_timer(pose_name)
             
             if not is_ready_for_capture:

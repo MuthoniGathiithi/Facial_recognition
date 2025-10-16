@@ -48,7 +48,7 @@ class EnrollmentState:
         
         # Pose hold timer to prevent false captures
         self.pose_hold_start_time = None
-        self.pose_hold_duration = 0.8  # Require 0.8 seconds of stable pose (very user-friendly)
+        self.pose_hold_duration = 0.3  # Require 0.3 seconds of stable pose (EXTREMELY fast)
         self.last_valid_pose = None
         
         # Metadata
@@ -181,7 +181,17 @@ class EnrollmentState:
         
         current_pose = self.get_current_pose()
         if current_pose:
-            return f"Please turn your head {current_pose['name']}"
+            pose_name = current_pose['name']
+            if pose_name == 'front':
+                return "Please look straight at the camera"
+            elif pose_name == 'left':
+                return "Please turn your head to YOUR LEFT - show your left profile"
+            elif pose_name == 'right':
+                return "Please turn your head to YOUR RIGHT - show your right profile"
+            elif pose_name == 'down':
+                return "Please tilt your head slightly down"
+            else:
+                return f"Please turn your head {pose_name}"
         
         return "Enrollment in progress..."
     
