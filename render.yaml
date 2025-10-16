@@ -19,6 +19,8 @@ services:
         value: 1
       - key: PIP_DISABLE_PIP_VERSION_CHECK
         value: 1
+      - key: INSIGHTFACE_HOME
+        value: /tmp/insightface
     plan: free
     disk:
       name: identiface-data

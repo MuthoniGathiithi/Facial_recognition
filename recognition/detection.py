@@ -16,9 +16,13 @@ def get_face_analysis_app():
         # Import InsightFace only when needed to avoid startup issues
         from insightface.app import FaceAnalysis
         
-        # Set model directory to writable location
-        model_root = os.environ.get('INSIGHTFACE_HOME', os.path.expanduser('~/.insightface'))
-        print(f"download_path: {model_root}")
+        # Set model directory to writable location for Render deployment
+        model_root = os.environ.get('INSIGHTFACE_HOME', '/tmp/insightface')
+        print(f"Model download path: {model_root}")
+        
+        # Ensure the directory exists
+        os.makedirs(model_root, exist_ok=True)
+        print(f"✅ Model directory created/verified: {model_root}")
         
         app = FaceAnalysis(name="buffalo_l", root=model_root, providers=['CPUExecutionProvider'])
         app.prepare(ctx_id=0, det_size=(640, 640))

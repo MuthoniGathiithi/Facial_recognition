@@ -9,9 +9,7 @@ from django.conf import settings
 from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import uuid
-# In recognition/views.py, add these imports at the top
 import json
-from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from .models import Person, FaceEmbedding
@@ -509,10 +507,20 @@ def capture_pose(request):
         
         # Extract REAL face embedding using the same detection system as matching
         try:
+            print("🔧 Loading InsightFace for embedding extraction...")
             from .detection import get_face_analysis_app
             detection_app = get_face_analysis_app()
             
-            print(f"Using shared InsightFace app from detection module")
+            if detection_app is None:
+                print("❌ CRITICAL: InsightFace app failed to load!")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Face recognition system not available. Please try again later.',
+                    'current_pose': current_pose['name'],
+                    'progress': enrollment_state.get_progress()
+                })
+            
+            print(f"✅ Using shared InsightFace app from detection module")
             
             # DEBUG: Check the recognition model output size
             for model_name, model in detection_app.models.items():
@@ -765,12 +773,17 @@ def enroll(request):
 
 
 def matching_view(request):
+    print("🚀 MATCHING VIEW CALLED - Starting face matching process...")
+    
     # Memory monitoring for Render debugging
-    import psutil
-    import os
-    process = psutil.Process(os.getpid())
-    memory_mb = process.memory_info().rss / 1024 / 1024
-    print(f"🔍 Memory usage at start of matching: {memory_mb:.1f} MB")
+    try:
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        print(f"🔍 Memory usage at start of matching: {memory_mb:.1f} MB")
+    except Exception as e:
+        print(f"⚠️ Memory monitoring failed: {e}")
     
     # Check if this is an AJAX request
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'

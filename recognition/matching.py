@@ -23,22 +23,26 @@ print(f"{'='*60}\n")
 def get_face_embeddings(image_rgb):
     """Extract embeddings for faces in an RGB image with speed optimization"""
     try:
-        # Resize image aggressively to save memory (Render has 512MB limit)
+        # Resize image for balance between memory and accuracy
         h, w = image_rgb.shape[:2]
-        max_size = 320  # Much smaller for memory efficiency on Render
+        max_size = 640  # Balanced size for face recognition accuracy
         if max(h, w) > max_size:
             scale = max_size / max(h, w)
             new_h, new_w = int(h * scale), int(w * scale)
             image_rgb = cv2.resize(image_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"⚡ Memory-optimized resize from {w}x{h} to {new_w}x{new_h} for Render 512MB limit")
+            print(f"⚡ Balanced resize from {w}x{h} to {new_w}x{new_h} for accuracy vs memory")
         
         # Use the same detection app as enrollment for consistency
+        print("🔧 Loading InsightFace for matching...")
         from .detection import get_face_analysis_app
         app = get_face_analysis_app()
         
         if app is None:
-            print("❌ Failed to get face analysis app")
+            print("❌ CRITICAL: Failed to get face analysis app for matching!")
+            print("❌ This usually means InsightFace models failed to download or load")
             return []
+        
+        print("✅ InsightFace app loaded successfully for matching")
         
         # Convert RGB to BGR for InsightFace
         image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
@@ -52,10 +56,10 @@ def get_face_embeddings(image_rgb):
         
         print(f"✅ InsightFace detected {len(faces)} face(s)")
         
-        # Limit to first 2 faces to save memory (Render 512MB limit)
-        if len(faces) > 2:
-            faces = faces[:2]
-            print(f"⚡ Limited to first 2 faces to save memory on Render")
+        # Limit to first 3 faces for reasonable processing
+        if len(faces) > 3:
+            faces = faces[:3]
+            print(f"⚡ Limited to first 3 faces for reasonable processing")
         
         # Extract embeddings
         embeddings = []
