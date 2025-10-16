@@ -120,6 +120,157 @@ def check_face_position(face_bbox, image_size, margin_ratio=0.15):
     
     return True, "Face centered in frame"
 
+def check_occlusion(image, face_bbox, landmarks=None):
+    """
+    Check for face occlusions including masks, sunglasses, hands, shadows, and objects.
+    
+    Args:
+        image: Input image (BGR or RGB)
+        face_bbox: Tuple of (x1, y1, x2, y2)
+        landmarks: Optional facial landmarks (68 points)
+    
+    Returns:
+        tuple: (is_valid, message, occlusion_details)
+    """
+    if image is None or image.size == 0:
+        return False, "Empty image", {}
+        
+    if not face_bbox or len(face_bbox) != 4:
+        return False, "Invalid face bbox", {}
+    
+    x1, y1, x2, y2 = face_bbox
+    face_region = image[y1:y2, x1:x2]
+    
+    if face_region.size == 0:
+        return False, "Invalid face region", {}
+    
+    # Convert to different color spaces for analysis
+    gray = cv2.cvtColor(face_region, cv2.COLOR_BGR2GRAY)
+    hsv = cv2.cvtColor(face_region, cv2.COLOR_BGR2HSV)
+    
+    occlusion_issues = []
+    occlusion_details = {
+        'mask_detected': False,
+        'sunglasses_detected': False,
+        'hand_detected': False,
+        'shadow_detected': False,
+        'hair_occlusion': False,
+        'object_detected': False,
+        'extreme_pose': False
+    }
+    
+    # 1. Check for masks (lower face coverage)
+    lower_face = gray[int(gray.shape[0] * 0.6):, :]
+    if lower_face.size > 0:
+        # Look for uniform regions that might indicate masks
+        lower_std = np.std(lower_face)
+        lower_mean = np.mean(lower_face)
+        
+        # Masks often create uniform regions with low variance
+        if lower_std < 15 and (lower_mean < 80 or lower_mean > 180):
+            occlusion_issues.append("Please remove anything covering your face")
+            occlusion_details['mask_detected'] = True
+    
+    # 2. Check for sunglasses (upper face coverage)
+    upper_face = gray[:int(gray.shape[0] * 0.5), :]
+    if upper_face.size > 0:
+        # Look for dark regions that might be sunglasses
+        dark_pixels = np.sum(upper_face < 50)
+        total_pixels = upper_face.size
+        dark_ratio = dark_pixels / total_pixels
+        
+        if dark_ratio > 0.3:  # More than 30% dark pixels in upper face
+            # Additional check for horizontal dark bands (typical of sunglasses)
+            horizontal_profile = np.mean(upper_face, axis=1)
+            if np.min(horizontal_profile) < 40:
+                occlusion_issues.append("Please remove anything covering your face")
+                occlusion_details['sunglasses_detected'] = True
+    
+    # 3. Check for shadows and poor lighting
+    # Analyze brightness distribution
+    brightness_std = np.std(gray)
+    brightness_mean = np.mean(gray)
+    
+    # Check for high contrast regions that might indicate shadows
+    if brightness_std > 60:  # High variance indicates uneven lighting
+        # Check for very dark regions
+        dark_regions = np.sum(gray < 30) / gray.size
+        if dark_regions > 0.25:  # More than 25% very dark pixels
+            occlusion_issues.append("Please improve lighting - face is too dark")
+            occlusion_details['shadow_detected'] = True
+    
+    # 4. Check for extreme head poses using face aspect ratio
+    face_width = x2 - x1
+    face_height = y2 - y1
+    aspect_ratio = face_width / face_height
+    
+    # Normal face aspect ratio is around 0.75-0.85
+    if aspect_ratio < 0.6 or aspect_ratio > 1.0:
+        occlusion_issues.append("Please position your face straight in the camera")
+        occlusion_details['extreme_pose'] = True
+    
+    # 5. Check for hand-like skin tones near face
+    # Convert to HSV for better skin detection
+    h, s, v = cv2.split(hsv)
+    
+    # Skin tone detection in HSV
+    skin_mask = cv2.inRange(hsv, np.array([0, 20, 70]), np.array([20, 255, 255]))
+    skin_pixels = np.sum(skin_mask > 0)
+    total_pixels = gray.size
+    skin_ratio = skin_pixels / total_pixels
+    
+    # If too much skin detected, might indicate hands on face
+    if skin_ratio > 0.8:  # More than 80% skin-like pixels
+        # Check for irregular shapes that might be hands
+        contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(contours) > 3:  # Multiple skin regions might indicate hands
+            occlusion_issues.append("Please remove your hands from your face")
+            occlusion_details['hand_detected'] = True
+    
+    # 6. Check for hair covering eyes (upper region analysis)
+    eye_region = gray[:int(gray.shape[0] * 0.4), :]
+    if eye_region.size > 0:
+        # Look for texture patterns that might indicate hair
+        # Hair typically has more texture/edges than skin
+        edges = cv2.Canny(eye_region, 50, 150)
+        edge_density = np.sum(edges > 0) / edges.size
+        
+        if edge_density > 0.15:  # High edge density might indicate hair
+            # Check if it's covering critical eye areas
+            eye_center_region = eye_region[int(eye_region.shape[0] * 0.3):int(eye_region.shape[0] * 0.8), :]
+            if np.mean(eye_center_region) < 60:  # Dark region where eyes should be
+                occlusion_issues.append("Please move hair away from your eyes")
+                occlusion_details['hair_occlusion'] = True
+    
+    # 7. Check for foreign objects using edge detection
+    edges = cv2.Canny(gray, 50, 150)
+    edge_density = np.sum(edges > 0) / edges.size
+    
+    # Very high edge density might indicate objects like phones, microphones
+    if edge_density > 0.25:
+        # Look for geometric shapes that don't belong to faces
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > gray.size * 0.1:  # Large objects
+                # Check if it's a geometric shape (not organic like face)
+                epsilon = 0.02 * cv2.arcLength(contour, True)
+                approx = cv2.approxPolyDP(contour, epsilon, True)
+                if len(approx) < 8:  # Geometric shapes have fewer vertices
+                    occlusion_issues.append("Please remove any objects from your face area")
+                    occlusion_details['object_detected'] = True
+                    break
+    
+    # Determine overall result
+    if occlusion_issues:
+        is_valid = False
+        message = "Some parts of the face are not detected: " + "; ".join(occlusion_issues)
+    else:
+        is_valid = True
+        message = "No significant occlusions detected"
+    
+    return is_valid, message, occlusion_details
+
 def check_face_quality(image, face_bbox, min_confidence=0.7):
     """
     Comprehensive face quality check.
@@ -134,14 +285,16 @@ def check_face_quality(image, face_bbox, min_confidence=0.7):
             'is_valid': bool,
             'messages': list of strings,
             'brightness': float,
-            'sharpness': float
+            'sharpness': float,
+            'occlusion_details': dict
         }
     """
     results = {
         'is_valid': True,
         'messages': [],
         'brightness': 0,
-        'sharpness': 0
+        'sharpness': 0,
+        'occlusion_details': {}
     }
     
     # Check image validity
@@ -174,5 +327,12 @@ def check_face_quality(image, face_bbox, min_confidence=0.7):
         pos_ok, pos_msg = check_face_position(face_bbox, image.shape[:2])
         if not pos_ok:
             results['messages'].append(pos_msg)  # Warning but not invalid
+        
+        # Check for occlusions
+        occlusion_ok, occlusion_msg, occlusion_details = check_occlusion(image, face_bbox)
+        results['occlusion_details'] = occlusion_details
+        if not occlusion_ok:
+            results['is_valid'] = False
+            results['messages'].append(occlusion_msg)
     
     return results
