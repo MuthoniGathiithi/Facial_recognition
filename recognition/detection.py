@@ -1,28 +1,44 @@
-from insightface.app import FaceAnalysis
 import cv2
 import numpy as np
 import os
+from io import BytesIO
+from PIL import Image
 
-# Initialize buffalo_l model consistently for both enrollment and matching
-app = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
-app.prepare(ctx_id=0, det_size=(640, 640))
-print("✅ Using buffalo_l model consistently")
+# Lazy loading - initialize model only when needed
+app = None
 
-# Debug: Print model information and check embedding dimensions
-print("=== INSIGHTFACE MODEL DEBUG ===")
-for model_name, model in app.models.items():
-    print(f"Model: {model_name}")
-    if hasattr(model, 'output_size'):
-        print(f"  Output size: {model.output_size}")
-    if hasattr(model, 'input_size'):
-        print(f"  Input size: {model.input_size}")
-    if hasattr(model, 'taskname'):
-        print(f"  Task: {model.taskname}")
-    if hasattr(model, 'output_shape'):
-        print(f"  Output shape: {model.output_shape}")
-
-# Model loaded and ready for use
-print("==========================================")
+def get_face_analysis_app():
+    """Lazy load the FaceAnalysis model - loads only on first use"""
+    global app
+    if app is None:
+        print("🔄 Loading InsightFace model (first time only)...")
+        
+        # Import InsightFace only when needed to avoid startup issues
+        from insightface.app import FaceAnalysis
+        
+        # Set model directory to writable location
+        model_root = os.environ.get('INSIGHTFACE_HOME', os.path.expanduser('~/.insightface'))
+        print(f"download_path: {model_root}")
+        
+        app = FaceAnalysis(name="buffalo_l", root=model_root, providers=['CPUExecutionProvider'])
+        app.prepare(ctx_id=0, det_size=(640, 640))
+        print("✅ InsightFace model loaded successfully")
+        
+        # Debug: Print model information
+        print("=== INSIGHTFACE MODEL DEBUG ===")
+        for model_name, model in app.models.items():
+            print(f"Model: {model_name}")
+            if hasattr(model, 'output_size'):
+                print(f"  Output size: {model.output_size}")
+            if hasattr(model, 'input_size'):
+                print(f"  Input size: {model.input_size}")
+            if hasattr(model, 'taskname'):
+                print(f"  Task: {model.taskname}")
+            if hasattr(model, 'output_shape'):
+                print(f"  Output shape: {model.output_shape}")
+        print("==========================================")
+    
+    return app
 
 # -------------------- PREPROCESSING -------------------- #
 def preprocess_image(image_bgr):
@@ -63,6 +79,28 @@ def load_and_prepare_image(image_path):
             return None
     else:
         print("Invalid image path")
+        return None
+
+def load_and_prepare_image_from_bytes(image_bytes):
+    """Load image from bytes, preprocess, convert to RGB - for memory-based processing"""
+    try:
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        # Decode image
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is not None:
+            # Step 1: Preprocess for lighting + blur
+            processed = preprocess_image(image)
+            
+            # Step 2: Convert to RGB (ArcFace expects RGB later)
+            image_RGB = cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
+            return image_RGB
+        else:
+            print("Error decoding image from bytes")
+            return None
+    except Exception as e:
+        print(f"Error loading image from bytes: {e}")
         return None
 
 # -------------------- DETECTION UTILS -------------------- #
@@ -111,8 +149,9 @@ def multi_scale_detect(image_rgb, scales=[320, 480, 640, 800, 1024], base_thresh
     for size in scales:
         try:
             print(f"  Trying scale: {size}x{size} with threshold: {base_thresh}")
-            app.prepare(ctx_id=0, det_size=(size, size))
-            faces = app.get(image_rgb)
+            face_app = get_face_analysis_app()
+            face_app.prepare(ctx_id=0, det_size=(size, size))
+            faces = face_app.get(image_rgb)
             print(f"  Found {len(faces)} faces at scale {size}x{size}")
             
             for f in faces:
@@ -142,8 +181,9 @@ def multi_scale_detect(image_rgb, scales=[320, 480, 640, 800, 1024], base_thresh
         tiny_scales = [160, 224, 320, 480]
         for size in tiny_scales:
             try:
-                app.prepare(ctx_id=0, det_size=(size, size))
-                faces = app.get(image_rgb)
+                face_app = get_face_analysis_app()
+                face_app.prepare(ctx_id=0, det_size=(size, size))
+                faces = face_app.get(image_rgb)
                 print(f"  Found {len(faces)} faces at tiny scale {size}x{size}")
                 
                 for f in faces:
@@ -271,8 +311,9 @@ def detect_face_in_frame(frame_rgb, confidence_threshold=0.3):
     """
     try:
         # Use smaller detection size for speed in video
-        app.prepare(ctx_id=0, det_size=(320, 320))
-        faces = app.get(frame_rgb)
+        face_app = get_face_analysis_app()
+        face_app.prepare(ctx_id=0, det_size=(320, 320))
+        faces = face_app.get(frame_rgb)
         
         # Filter by confidence and return faces with required attributes
         valid_faces = []
