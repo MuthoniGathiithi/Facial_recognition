@@ -331,6 +331,15 @@ def capture_pose(request):
         print(f"Request method: {request.method}")
         print(f"Request POST keys: {list(request.POST.keys())}")
         
+        # Get the frame data from the request
+        frame_data = request.POST.get('frame_data')
+        if not frame_data:
+            print("ERROR: No frame_data in request")
+            return JsonResponse({
+                'status': 'error',
+                'message': 'No frame data provided'
+            }, status=400)
+        
         if not user_id:
             print("ERROR: No user_id provided")
             return JsonResponse({
