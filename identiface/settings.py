@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-)1ffep(aoyputl33=6^*++hy)ny5d)x(yinbimp98n@y=mur*z'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-)1ffep(aoyputl33=6^*++hy)ny5d)x(yinbimp98n@y=mur*z')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # Set DEBUG based on environment variable
@@ -47,7 +47,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -79,12 +78,27 @@ WSGI_APPLICATION = 'identiface.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Database configuration - PostgreSQL for production, SQLite for local development
+if os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_NAME'):
+    # Production database (Render or other PostgreSQL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DATABASE_NAME', 'identiface'),
+            'USER': os.environ.get('DATABASE_USER', 'identiface'),
+            'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+            'HOST': os.environ.get('DATABASE_HOST', 'localhost'),
+            'PORT': os.environ.get('DATABASE_PORT', '5432'),
+        }
     }
-}
+else:
+    # Local development database
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -121,7 +135,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -142,3 +157,9 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Create media directory if it doesn't exist
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 os.makedirs(os.path.join(MEDIA_ROOT, 'faces'), exist_ok=True)
+
+# Standard security settings for Render deployment
+X_FRAME_OPTIONS = 'DENY'
+
+# Use default database-backed sessions for Render deployment
+# SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # This is the default
