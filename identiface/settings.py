@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -24,7 +25,6 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-)1ffep(aoyputl33=6^*+
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # Set DEBUG based on environment variable
-import os
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
 # Set allowed hosts for production
@@ -142,13 +142,6 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
-
-import os
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Media files configuration
 MEDIA_URL = '/media/'
