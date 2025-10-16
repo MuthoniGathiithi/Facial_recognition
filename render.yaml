@@ -2,17 +2,21 @@ services:
   - type: web
     name: identiface
     env: python
-    buildCommand: "pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput"
-    startCommand: "gunicorn identiface.wsgi:application --bind 0.0.0.0:$PORT"
+    buildCommand: "pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput"
+    startCommand: "gunicorn identiface.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.8
+        value: 3.11.9
       - key: DJANGO_SETTINGS_MODULE
         value: identiface.settings
       - key: PYTHONUNBUFFERED
         value: true
       - key: DEBUG
         value: false
+      - key: PIP_NO_CACHE_DIR
+        value: 1
+      - key: PYTHONDONTWRITEBYTECODE
+        value: 1
     plan: free
     disk:
       name: identiface-data
